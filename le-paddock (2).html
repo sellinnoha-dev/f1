@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LE PADDOCK — Le forum F1 qui ne lève jamais le pied</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Titillium+Web:ital,wght@0,300;0,400;0,600;0,700;0,900;1,600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --asphalt:#0a0a0c;
+  --carbon1:#151519;
+  --carbon2:#1e1e24;
+  --line:#2b2b32;
+  --white:#f4f4f1;
+  --chrome:#9a9ba3;
+  --red:#e10600;
+  --red2:#ff2f27;
+  --amber:#ffb800;
+  --green:#12c48b;
+  --ferrari:#e8002d;
+  --redbull:#3671c6;
+  --mercedes:#27f4d2;
+  --mclaren:#ff8000;
+  --aston:#229971;
+  --alpine:#ff87bc;
+  --williams:#64c4ff;
+  --haas:#b6babd;
+  --vcarb:#6692ff;
+  --sauber:#52e252;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--asphalt);
+  color:var(--white);
+  font-family:'Titillium Web',sans-serif;
+  overflow-x:hidden;
+  position:relative;
+}
+body::before{
+  content:"";
+  position:fixed;inset:0;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px);
+  pointer-events:none;
+  z-index:1;
+}
+.display{font-family:'Bebas Neue',sans-serif;letter-spacing:0.02em;}
+.mono{font-family:'JetBrains Mono',monospace;}
+a{color:inherit;text-decoration:none;}
+ul{list-style:none;}
+img{max-width:100%;display:block;}
+::selection{background:var(--red);color:var(--white);}
+
+/* ---------------- LIGHTS INTRO ---------------- */
+#lights-intro{
+  position:fixed;inset:0;
+  background:#000;
+  z-index:9999;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:40px;
+  transition:opacity .8s ease, visibility .8s ease;
+}
+#lights-intro.hide{opacity:0;visibility:hidden;}
+.rig{
+  display:flex;
+  gap:clamp(14px,4vw,34px);
+  padding:18px clamp(16px,4vw,34px);
+  background:#0d0d0d;
+  border:2px solid #1c1c1c;
+  border-radius:10px;
+  box-shadow:0 0 60px rgba(225,6,0,0.08), inset 0 0 30px rgba(0,0,0,0.8);
+}
+.bulb{
+  width:clamp(28px,6vw,54px);
+  height:clamp(28px,6vw,54px);
+  border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #3a0605, #1a0201 70%);
+  box-shadow:inset 0 0 8px #000, 0 0 0 4px #050505;
+  transition:background .15s ease, box-shadow .15s ease;
+}
+.bulb.on{
+  background:radial-gradient(circle at 35% 30%, #ff5a4f, var(--red) 70%);
+  box-shadow:inset 0 0 10px rgba(255,255,255,0.4), 0 0 26px 8px rgba(225,6,0,0.85), 0 0 0 4px #050505;
+}
+#lights-caption{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(28px,6vw,56px);
+  letter-spacing:0.08em;
+  color:var(--white);
+  opacity:0;
+  transform:translateY(10px);
+  transition:opacity .4s ease, transform .4s ease;
+  text-align:center;
+}
+#lights-caption.show{opacity:1;transform:translateY(0);}
+#lights-caption .accent{color:var(--red2);}
+.skip-intro{
+  position:absolute;bottom:26px;right:26px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;letter-spacing:.1em;
+  color:var(--chrome);
+  border:1px solid var(--line);
+  padding:8px 14px;border-radius:20px;
+  background:rgba(255,255,255,0.02);
+  cursor:pointer;
+}
+.skip-intro:hover{color:var(--white);border-color:var(--chrome);}
+
+/* ---------------- LAYOUT WRAPPER ---------------- */
+.wrap{max-width:1240px;margin:0 auto;padding:0 24px;position:relative;z-index:2;}
+
+/* ---------------- NAV ---------------- */
+header{
+  position:sticky;top:0;z-index:500;
+  background:rgba(10,10,12,0.86);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.livery-strip{height:4px;width:100%;background:linear-gradient(90deg,var(--red) 0 20%, var(--amber) 20% 40%, var(--white) 40% 45%, var(--carbon2) 45% 100%);}
+nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 0;
+}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo .num{
+  font-family:'Bebas Neue',sans-serif;
+  background:var(--red);color:#fff;
+  font-size:20px;padding:2px 9px;border-radius:4px;
+  transform:skewX(-8deg);
+  display:inline-block;
+}
+.logo .num span{display:inline-block;transform:skewX(8deg);}
+.logo .word{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.06em;}
+.logo .word .thin{color:var(--chrome);font-size:13px;letter-spacing:.2em;display:block;margin-top:-4px;font-family:'JetBrains Mono',monospace;}
+.nav-links{display:flex;gap:32px;align-items:center;}
+.nav-links a{
+  font-size:14px;font-weight:600;letter-spacing:.03em;
+  color:var(--chrome);
+  position:relative;padding:6px 0;
+  transition:color .2s;
+}
+.nav-links a::after{
+  content:"";position:absolute;left:0;bottom:0;width:0;height:2px;background:var(--red);
+  transition:width .25s ease;
+}
+.nav-links a:hover{color:var(--white);}
+.nav-links a:hover::after{width:100%;}
+.nav-cta{display:flex;gap:10px;align-items:center;}
+.btn{
+  font-family:'Titillium Web',sans-serif;font-weight:700;font-size:13.5px;
+  padding:10px 20px;border-radius:6px;cursor:pointer;border:none;
+  letter-spacing:.02em;
+  transition:transform .18s ease, box-shadow .18s ease, background .2s;
+}
+.btn-primary{background:var(--red);color:#fff;box-shadow:0 4px 18px rgba(225,6,0,0.35);}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(225,6,0,0.5);}
+.btn-ghost{background:transparent;color:var(--white);border:1px solid var(--line);}
+.btn-ghost:hover{border-color:var(--chrome);}
+.burger{display:none;}
+
+/* ---------------- HERO ---------------- */
+.hero{
+  position:relative;
+  padding:110px 0 90px;
+  overflow:hidden;
+  border-bottom:1px solid var(--line);
+}
+.hero::before{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 60% 50% at 80% 0%, rgba(225,6,0,0.14), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 10% 100%, rgba(255,184,0,0.08), transparent 60%);
+  z-index:0;
+}
+.speedlines{position:absolute;inset:0;z-index:0;opacity:.5;pointer-events:none;}
+.speedline{
+  position:absolute;height:1px;
+  background:linear-gradient(90deg, transparent, rgba(244,244,241,0.5), transparent);
+  animation:zoom 3.2s linear infinite;
+}
+@keyframes zoom{
+  0%{transform:translateX(-30%) scaleX(0.3);opacity:0;}
+  15%{opacity:1;}
+  100%{transform:translateX(120%) scaleX(1.4);opacity:0;}
+}
+.hero-inner{position:relative;z-index:2;display:grid;grid-template-columns:1.25fr 0.9fr;gap:50px;align-items:center;}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;
+  color:var(--amber);text-transform:uppercase;margin-bottom:18px;
+}
+.eyebrow::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.6s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+h1.hero-title{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(46px,6.2vw,84px);
+  line-height:0.95;
+  letter-spacing:.01em;
+  margin-bottom:22px;
+}
+h1.hero-title .line2{color:var(--red2);display:block;}
+.hero p.sub{
+  font-size:17px;line-height:1.65;color:var(--chrome);max-width:52ch;margin-bottom:34px;
+}
+.hero-actions{display:flex;gap:14px;margin-bottom:44px;flex-wrap:wrap;}
+.hero-stats{display:flex;gap:34px;flex-wrap:wrap;}
+.hstat b{
+  font-family:'Bebas Neue',sans-serif;font-size:34px;display:block;color:var(--white);
+  line-height:1;
+}
+.hstat span{font-size:12px;color:var(--chrome);letter-spacing:.05em;text-transform:uppercase;}
+
+/* hero visual: telemetry / speedo card */
+.hero-visual{
+  position:relative;
+  background:linear-gradient(160deg,var(--carbon1),var(--carbon2));
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:26px;
+  box-shadow:0 30px 60px rgba(0,0,0,0.45);
+}
+.hv-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}
+.hv-head .tag{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--chrome);letter-spacing:.1em;}
+.hv-head .live{color:var(--red2);font-family:'JetBrains Mono',monospace;font-size:11px;display:flex;align-items:center;gap:6px;}
+.hv-head .live::before{content:"";width:6px;height:6px;background:var(--red2);border-radius:50%;animation:pulse 1s infinite;}
+.gauge-wrap{display:flex;justify-content:center;margin:14px 0 20px;}
+.speedo-num{font-family:'Bebas Neue',sans-serif;font-size:76px;text-align:center;line-height:1;color:var(--white);}
+.speedo-num small{font-size:16px;color:var(--chrome);font-family:'JetBrains Mono',monospace;display:block;margin-top:4px;}
+.bars{display:flex;gap:4px;align-items:flex-end;height:46px;margin:0 0 20px;}
+.bars i{flex:1;background:linear-gradient(180deg,var(--red2),var(--red));border-radius:2px 2px 0 0;animation:eq 1.1s ease-in-out infinite;}
+.bars i:nth-child(odd){animation-delay:.2s;}
+.bars i:nth-child(3n){animation-delay:.4s;background:linear-gradient(180deg,var(--amber),#c98d00);}
+@keyframes eq{0%,100%{height:20%;}50%{height:100%;}}
+.hv-foot{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--chrome);border-top:1px solid var(--line);padding-top:14px;}
+.hv-foot b{color:var(--white);}
+
+/* ---------------- TICKER ---------------- */
+.ticker-section{
+  background:var(--carbon1);
+  border-bottom:1px solid var(--line);
+  overflow:hidden;
+  position:relative;
+}
+.ticker-label{
+  position:absolute;left:0;top:0;bottom:0;z-index:2;
+  background:var(--red);color:#fff;
+  display:flex;align-items:center;padding:0 18px;
+  font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.08em;
+  clip-path:polygon(0 0,100% 0,86% 100%,0% 100%);
+  padding-right:34px;
+}
+.ticker-track{display:flex;white-space:nowrap;animation:scroll 32s linear infinite;padding:13px 0;padding-left:160px;}
+.ticker-track span{margin-right:60px;font-size:13.5px;color:var(--chrome);}
+.ticker-track span b{color:var(--white);}
+.ticker-track span::before{content:"⏺";color:var(--amber);font-size:6px;margin-right:12px;vertical-align:middle;}
+@keyframes scroll{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
+.ticker-section:hover .ticker-track{animation-play-state:paused;}
+
+/* ---------------- SECTION GENERIC ---------------- */
+section{padding:88px 0;position:relative;z-index:2;}
+.section-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:44px;flex-wrap:wrap;gap:16px;}
+.section-head .kicker{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--red2);letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px;display:block;}
+.section-head h2{font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,4vw,48px);letter-spacing:.01em;}
+.section-head p{color:var(--chrome);max-width:46ch;font-size:15px;margin-top:8px;}
+.see-all{font-size:13.5px;font-weight:700;color:var(--white);border-bottom:2px solid var(--red);padding-bottom:3px;white-space:nowrap;}
+
+/* ---------------- CATEGORIES ---------------- */
+.cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+.cat-card{
+  background:var(--carbon1);border:1px solid var(--line);border-radius:14px;
+  padding:26px;position:relative;overflow:hidden;
+  border-left:4px solid var(--cat-color, var(--red));
+  transition:transform .25s ease, box-shadow .25s ease, background .25s ease;
+  opacity:0;transform:translateY(24px);
+}
+.cat-card.reveal{opacity:1;transform:translateY(0);}
+.cat-card:hover{transform:translateY(-6px);background:var(--carbon2);box-shadow:0 20px 40px rgba(0,0,0,0.35);}
+.cat-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+.cat-icon{
+  width:44px;height:44px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  background:color-mix(in srgb, var(--cat-color, var(--red)) 20%, transparent);
+  border:1px solid color-mix(in srgb, var(--cat-color, var(--red)) 40%, transparent);
+}
+.cat-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--chrome);text-align:right;}
+.cat-count b{display:block;color:var(--white);font-size:17px;font-family:'Bebas Neue',sans-serif;}
+.cat-card h3{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.02em;margin-bottom:8px;}
+.cat-card p{font-size:13.8px;color:var(--chrome);line-height:1.55;margin-bottom:18px;}
+.cat-foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:14px;font-size:12.5px;color:var(--chrome);}
+.cat-foot .who{display:flex;align-items:center;gap:8px;}
+.avatar{width:22px;height:22px;border-radius:50%;background:var(--cat-color,var(--red));display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#000;}
+
+/* ---------------- TOPICS TABLE ---------------- */
+.topics{background:var(--carbon1);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+.topic-row{
+  display:grid;grid-template-columns:auto 1fr auto auto auto;gap:18px;align-items:center;
+  padding:18px 24px;border-bottom:1px solid var(--line);
+  transition:background .2s;
+}
+.topic-row:last-child{border-bottom:none;}
+.topic-row:hover{background:var(--carbon2);}
+.topic-row .tavatar{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:15px;color:#0a0a0c;flex-shrink:0;}
+.topic-main .tag{
+  display:inline-block;font-size:10.5px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;
+  padding:2px 9px;border-radius:20px;margin-bottom:6px;color:#0a0a0c;font-weight:700;
+}
+.topic-main h4{font-size:15.5px;font-weight:700;margin-bottom:3px;}
+.topic-main .meta{font-size:12px;color:var(--chrome);}
+.tstat{text-align:center;min-width:56px;}
+.tstat b{display:block;font-family:'Bebas Neue',sans-serif;font-size:20px;}
+.tstat span{font-size:10.5px;color:var(--chrome);text-transform:uppercase;letter-spacing:.05em;}
+.tlast{font-size:12px;color:var(--chrome);text-align:right;min-width:100px;}
+.tlast b{color:var(--white);display:block;font-size:12.5px;}
+.hot{color:var(--amber);}
+
+/* ---------------- STANDINGS ---------------- */
+.standings-grid{display:grid;grid-template-columns:1fr 1fr;gap:26px;}
+.stand-card{background:var(--carbon1);border:1px solid var(--line);border-radius:14px;padding:28px;}
+.stand-card h3{font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:6px;letter-spacing:.03em;}
+.stand-card .sub{font-size:12.5px;color:var(--chrome);margin-bottom:22px;}
+.stand-row{display:grid;grid-template-columns:22px 1fr auto;gap:14px;align-items:center;margin-bottom:16px;}
+.stand-row .pos{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--chrome);}
+.stand-row .name{font-size:13.5px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;}
+.stand-row .name small{color:var(--chrome);font-weight:400;font-family:'JetBrains Mono',monospace;}
+.bar-track{height:7px;background:var(--carbon2);border-radius:6px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:6px;width:0%;transition:width 1.4s cubic-bezier(.2,.8,.2,1);}
+.stand-row .pts{font-family:'Bebas Neue',sans-serif;font-size:19px;min-width:44px;text-align:right;}
+
+/* ---------------- PULSE / COUNTERS ---------------- */
+.pulse{
+  background:linear-gradient(180deg,var(--carbon1),var(--asphalt));
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+}
+.pulse-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;text-align:center;}
+.pulse-item{padding:0 20px;border-right:1px solid var(--line);}
+.pulse-item:last-child{border-right:none;}
+.pulse-item b{
+  font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,5vw,58px);
+  display:block;color:var(--white);
+  background:linear-gradient(180deg,#fff,var(--chrome));
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.pulse-item span{font-size:12.5px;color:var(--chrome);letter-spacing:.06em;text-transform:uppercase;}
+
+/* ---------------- CTA BAND ---------------- */
+.cta-band{
+  position:relative;overflow:hidden;
+  background:var(--carbon1);
+  border:1px solid var(--line);border-radius:20px;
+  padding:60px 50px;
+  display:flex;justify-content:space-between;align-items:center;gap:30px;flex-wrap:wrap;
+}
+.cta-band::before{
+  content:"";position:absolute;top:-40%;right:-10%;width:60%;height:180%;
+  background:repeating-linear-gradient(115deg, var(--red) 0 26px, transparent 26px 52px);
+  opacity:.06;
+}
+.cta-band h2{font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,3.6vw,42px);max-width:14ch;position:relative;z-index:1;}
+.cta-band p{color:var(--chrome);margin-top:10px;max-width:40ch;position:relative;z-index:1;}
+.cta-actions{position:relative;z-index:1;display:flex;gap:12px;flex-wrap:wrap;}
+
+/* ---------------- FOOTER ---------------- */
+footer{border-top:1px solid var(--line);padding:60px 0 30px;}
+.foot-grid{display:grid;grid-template-columns:1.4fr repeat(3,1fr);gap:40px;margin-bottom:50px;}
+.foot-grid h5{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--chrome);margin-bottom:16px;}
+.foot-grid li{margin-bottom:10px;font-size:14px;}
+.foot-grid a:hover{color:var(--red2);}
+.foot-bottom{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:24px;font-size:12.5px;color:var(--chrome);flex-wrap:wrap;gap:10px;}
+
+/* ---------------- MISC ---------------- */
+.checker{
+  height:10px;width:100%;
+  background-image:linear-gradient(45deg, #000 25%, transparent 25%, transparent 75%, #000 75%),
+                    linear-gradient(45deg, #000 25%, transparent 25%, transparent 75%, #000 75%);
+  background-size:10px 10px;background-position:0 0, 5px 5px;background-color:#fff;
+  opacity:.9;
+}
+.reveal-on-scroll{opacity:0;transform:translateY(26px);transition:opacity .7s ease, transform .7s ease;}
+.reveal-on-scroll.in{opacity:1;transform:translateY(0);}
+
+@media(max-width:980px){
+  .hero-inner{grid-template-columns:1fr;}
+  .cat-grid{grid-template-columns:1fr 1fr;}
+  .standings-grid{grid-template-columns:1fr;}
+  .pulse-grid{grid-template-columns:1fr 1fr;}
+  .pulse-item{border-right:none;border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:10px;}
+  .foot-grid{grid-template-columns:1fr 1fr;}
+}
+@media(max-width:680px){
+  .nav-links{display:none;}
+  .cat-grid{grid-template-columns:1fr;}
+  .topic-row{grid-template-columns:auto 1fr;}
+  .topic-row .tstat, .topic-row .tlast{display:none;}
+  .pulse-grid{grid-template-columns:1fr 1fr;}
+  .foot-grid{grid-template-columns:1fr;}
+  .cta-band{flex-direction:column;text-align:center;}
+}
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important; transition:none !important;}
+}
+
+/* ---------------- INTERACTIVITY: MODALS + TOASTS ---------------- */
+.cat-card, .topic-row{cursor:pointer;}
+.modal-overlay{
+  position:fixed;inset:0;z-index:2000;
+  background:rgba(6,6,7,0.72);
+  backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;
+  padding:24px;
+  opacity:0;visibility:hidden;
+  transition:opacity .25s ease, visibility .25s ease;
+}
+.modal-overlay.open{opacity:1;visibility:visible;}
+.modal-box{
+  background:var(--carbon1);
+  border:1px solid var(--line);
+  border-radius:16px;
+  width:100%;max-width:560px;
+  max-height:86vh;overflow-y:auto;
+  padding:32px;
+  position:relative;
+  transform:translateY(18px) scale(.98);
+  transition:transform .25s ease;
+  box-shadow:0 40px 80px rgba(0,0,0,0.55);
+}
+.modal-overlay.open .modal-box{transform:translateY(0) scale(1);}
+.modal-box.wide{max-width:680px;}
+.modal-close{
+  position:absolute;top:18px;right:18px;
+  width:34px;height:34px;border-radius:50%;
+  background:var(--carbon2);border:1px solid var(--line);
+  color:var(--chrome);font-size:16px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .2s, color .2s, transform .2s;
+}
+.modal-close:hover{background:var(--red);color:#fff;border-color:var(--red);transform:rotate(90deg);}
+.modal-eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;color:var(--red2);text-transform:uppercase;margin-bottom:8px;}
+.modal-box h3{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.02em;margin-bottom:6px;padding-right:30px;}
+.modal-box .modal-desc{color:var(--chrome);font-size:13.8px;line-height:1.6;margin-bottom:24px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12.5px;color:var(--chrome);margin-bottom:7px;letter-spacing:.02em;}
+.field input, .field textarea, .field select{
+  width:100%;background:var(--carbon2);border:1px solid var(--line);
+  border-radius:8px;padding:12px 14px;color:var(--white);
+  font-family:'Titillium Web',sans-serif;font-size:14px;
+  transition:border-color .2s;
+}
+.field textarea{resize:vertical;min-height:90px;font-family:'Titillium Web',sans-serif;}
+.field input:focus, .field textarea:focus, .field select:focus{outline:none;border-color:var(--red);}
+.form-actions{display:flex;gap:10px;margin-top:22px;}
+.form-actions .btn{flex:1;justify-content:center;display:flex;align-items:center;}
+.modal-switch{font-size:13px;color:var(--chrome);text-align:center;margin-top:18px;}
+.modal-switch a{color:var(--red2);font-weight:700;cursor:pointer;}
+
+/* category modal topic list */
+.cm-topic{
+  display:flex;justify-content:space-between;align-items:center;gap:14px;
+  padding:14px 0;border-bottom:1px solid var(--line);
+}
+.cm-topic:last-child{border-bottom:none;}
+.cm-topic .t-title{font-size:14px;font-weight:700;margin-bottom:3px;}
+.cm-topic .t-meta{font-size:11.5px;color:var(--chrome);}
+.cm-topic .t-replies{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--chrome);white-space:nowrap;}
+
+/* thread modal */
+.thread-post{
+  background:var(--carbon2);border:1px solid var(--line);border-radius:10px;
+  padding:16px;margin-bottom:14px;
+}
+.thread-post .tp-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.thread-post .tp-head b{font-size:13.5px;}
+.thread-post .tp-head span{font-size:11.5px;color:var(--chrome);}
+.thread-post p{font-size:13.8px;line-height:1.6;color:var(--white);}
+.thread-post.op{border-left:3px solid var(--red);}
+.reply-new{animation:fadein .4s ease;}
+@keyframes fadein{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* toasts */
+#toastStack{
+  position:fixed;bottom:24px;right:24px;z-index:3000;
+  display:flex;flex-direction:column;gap:10px;
+  align-items:flex-end;
+}
+.toast{
+  background:var(--carbon1);border:1px solid var(--line);border-left:4px solid var(--red);
+  border-radius:10px;padding:14px 18px;
+  font-size:13.5px;max-width:320px;
+  box-shadow:0 14px 30px rgba(0,0,0,0.4);
+  display:flex;align-items:center;gap:10px;
+  animation:toastIn .3s ease;
+}
+.toast.success{border-left-color:var(--green);}
+@keyframes toastIn{from{opacity:0;transform:translateX(30px);}to{opacity:1;transform:translateX(0);}}
+.toast.hide{animation:toastOut .3s ease forwards;}
+@keyframes toastOut{to{opacity:0;transform:translateX(30px);}}
+</style>
+</head>
+<body>
+
+<!-- ===================== LIGHTS INTRO ===================== -->
+<div id="lights-intro">
+  <div class="rig">
+    <div class="bulb" id="b1"></div>
+    <div class="bulb" id="b2"></div>
+    <div class="bulb" id="b3"></div>
+    <div class="bulb" id="b4"></div>
+    <div class="bulb" id="b5"></div>
+  </div>
+  <div id="lights-caption" class="display">C'EST L'HEURE DU <span class="accent">DÉBRIEF</span></div>
+  <div class="skip-intro" id="skipBtn">PASSER ▸</div>
+</div>
+
+<!-- ===================== HEADER ===================== -->
+<header>
+  <div class="livery-strip"></div>
+  <div class="wrap">
+    <nav>
+      <div class="logo">
+        <span class="num"><span>44</span></span>
+        <span class="word">LE PADDOCK<span class="thin">FORUM COMMUNAUTAIRE F1</span></span>
+      </div>
+      <div class="nav-links">
+        <a href="#categories">Écuries</a>
+        <a href="#topics">Discussions</a>
+        <a href="#standings">Classements</a>
+        <a href="#pulse">La communauté</a>
+      </div>
+      <div class="nav-cta">
+        <a class="btn btn-ghost" href="#" onclick="openLogin();return false;">Connexion</a>
+        <a class="btn btn-primary" href="#" onclick="openSignup();return false;">Rejoindre le paddock</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<!-- ===================== HERO ===================== -->
+<section class="hero">
+  <div class="speedlines" id="speedlines"></div>
+  <div class="wrap hero-inner">
+    <div>
+      <div class="eyebrow">Session en direct · Paddock ouvert</div>
+      <h1 class="hero-title">ICI, ON DÉBAT<span class="line2">À 350 KM/H.</span></h1>
+      <p class="sub">Stratégies douteuses, undercuts de légende, embrouilles de stand des ravitaillements : Le Paddock est la tribune où les fans francophones de F1 refont chaque Grand Prix, dans les moindres détails.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#categories" style="padding:14px 26px;font-size:14.5px;">Entrer dans le paddock</a>
+        <a class="btn btn-ghost" href="#standings" style="padding:14px 26px;font-size:14.5px;">Voir les classements</a>
+      </div>
+      <div class="hero-stats">
+        <div class="hstat"><b data-count="48200">0</b><span>Membres inscrits</span></div>
+        <div class="hstat"><b data-count="1930">0</b><span>Sujets actifs</span></div>
+        <div class="hstat"><b data-count="812">0</b><span>Messages / jour</span></div>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="hv-head">
+        <span class="tag mono">TÉLÉMÉTRIE — PADDOCK</span>
+        <span class="live">EN DIRECT</span>
+      </div>
+      <div class="gauge-wrap">
+        <div class="speedo-num display">347<small>KM/H · DRS ACTIVÉ</small></div>
+      </div>
+      <div class="bars" id="eqbars"></div>
+      <div class="hv-foot">
+        <span>Utilisateurs en ligne<br><b>3 214</b></span>
+        <span>Sujet le + chaud<br><b>Stratégie Monza</b></span>
+        <span>Prochain GP<br><b>J-04</b></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TICKER ===================== -->
+<div class="ticker-section">
+  <div class="ticker-label">BREAKING</div>
+  <div class="ticker-track" id="tickerTrack"></div>
+</div>
+
+<!-- ===================== CATEGORIES ===================== -->
+<section id="categories">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <span class="kicker">Le garage</span>
+        <h2>Choisis ton stand</h2>
+        <p>Six paddocks thématiques pour ne rater aucune discussion, du réglage d'aileron à la dernière polémique de stand.</p>
+      </div>
+      <a class="see-all" href="#" onclick="toast('Tu as déjà toutes les catégories sous les yeux 👀');return false;">Toutes les catégories →</a>
+    </div>
+    <div class="cat-grid" id="catGrid"></div>
+  </div>
+</section>
+
+<!-- ===================== TRENDING TOPICS ===================== -->
+<section id="topics" style="padding-top:0;">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <span class="kicker">Sur le fil</span>
+        <h2>Discussions qui chauffent les pneus</h2>
+      </div>
+      <a class="see-all" href="#" onclick="openAllTopics();return false;">Voir tous les sujets →</a>
+    </div>
+    <div class="topics" id="topicsList"></div>
+  </div>
+</section>
+
+<!-- ===================== STANDINGS ===================== -->
+<section id="standings">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <span class="kicker">Tableau de bord</span>
+        <h2>Classements du championnat</h2>
+        <p>Mis à jour après chaque Grand Prix par la modération du forum.</p>
+      </div>
+    </div>
+    <div class="standings-grid">
+      <div class="stand-card">
+        <h3>Pilotes</h3>
+        <div class="sub">Points cumulés sur la saison</div>
+        <div id="driverStandings"></div>
+      </div>
+      <div class="stand-card">
+        <h3>Constructeurs</h3>
+        <div class="sub">Points cumulés — écuries</div>
+        <div id="teamStandings"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== COMMUNITY PULSE ===================== -->
+<section class="pulse" id="pulse">
+  <div class="wrap">
+    <div class="section-head" style="margin-bottom:50px;">
+      <div>
+        <span class="kicker">Rythme cardiaque du forum</span>
+        <h2>Ça carbure, en ce moment</h2>
+      </div>
+    </div>
+    <div class="pulse-grid">
+      <div class="pulse-item"><b data-count="3214">0</b><span>En ligne maintenant</span></div>
+      <div class="pulse-item"><b data-count="127">0</b><span>Sujets créés aujourd'hui</span></div>
+      <div class="pulse-item"><b data-count="96">0</b><span>Écuries suivies</span></div>
+      <div class="pulse-item"><b data-count="21">0</b><span>Grands Prix couverts</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CTA ===================== -->
+<section>
+  <div class="wrap">
+    <div class="cta-band">
+      <div>
+        <h2>Ta grille de départ t'attend.</h2>
+        <p>Crée ton compte, choisis ton écurie de cœur, et commence à débattre avant l'extinction des feux du prochain Grand Prix.</p>
+      </div>
+      <div class="cta-actions">
+        <a class="btn btn-primary" href="#" onclick="openSignup();return false;" style="padding:14px 26px;font-size:14.5px;">Créer un compte gratuit</a>
+        <a class="btn btn-ghost" href="#categories" onclick="toast('Tu explores déjà en mode invité 👀');" style="padding:14px 26px;font-size:14.5px;">Découvrir sans compte</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="checker"></div>
+
+<!-- ===================== FOOTER ===================== -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <div class="logo" style="margin-bottom:14px;">
+          <span class="num"><span>44</span></span>
+          <span class="word">LE PADDOCK</span>
+        </div>
+        <p style="color:var(--chrome);font-size:13.5px;line-height:1.6;max-width:34ch;">Communauté francophone indépendante de passionnés de Formule 1. Site créé par des fans, pour des fans.</p>
+      </div>
+      <div>
+        <h5>Forum</h5>
+        <ul>
+          <li><a href="#categories">Écuries & voitures</a></li>
+          <li><a href="#topics">Discussions générales</a></li>
+          <li><a href="#standings">Classements</a></li>
+          <li><a href="#" onclick="toast('Le règlement complet arrive bientôt 📋');return false;">Règlement du forum</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Communauté</h5>
+        <ul>
+          <li><a href="#" onclick="toast('Candidatures modération : bientôt ouvertes 🛠️');return false;">Devenir modérateur</a></li>
+          <li><a href="#" onclick="toast('La charte arrive bientôt 📖');return false;">Charte de bonne conduite</a></li>
+          <li><a href="#" onclick="toast('Lien Discord bientôt disponible 💬');return false;">Discord officieux</a></li>
+          <li><a href="#" onclick="toast('Formulaire de contact bientôt en ligne ✉️');return false;">Contact</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Légal</h5>
+        <ul>
+          <li><a href="#" onclick="toast('Mentions légales bientôt disponibles ⚖️');return false;">Mentions légales</a></li>
+          <li><a href="#" onclick="toast('Politique de confidentialité bientôt en ligne 🔒');return false;">Confidentialité</a></li>
+          <li><a href="#" onclick="toast('Gestion des cookies bientôt disponible 🍪');return false;">Cookies</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Le Paddock — Fan-site non officiel, sans lien avec Formula One Group.</span>
+      <span class="mono">DERNIÈRE MISE À JOUR · GP EN COURS</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ===================== MODAL + TOASTS ===================== -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+<div id="toastStack"></div>
+
+<script>
+/* ---------- LIGHTS INTRO SEQUENCE ---------- */
+(function(){
+  const bulbs=[...document.querySelectorAll('.bulb')];
+  const caption=document.getElementById('lights-caption');
+  const intro=document.getElementById('lights-intro');
+  const skip=document.getElementById('skipBtn');
+  let done=false;
+
+  function finish(){
+    if(done)return; done=true;
+    intro.classList.add('hide');
+    setTimeout(()=>{ intro.style.display='none'; startPageAnimations(); },850);
+  }
+
+  bulbs.forEach((b,i)=>{
+    setTimeout(()=>b.classList.add('on'), 450*(i+1));
+  });
+  setTimeout(()=>{
+    bulbs.forEach(b=>b.classList.remove('on'));
+    caption.classList.add('show');
+  }, 450*5+550);
+  setTimeout(finish, 450*5+1900);
+
+  skip.addEventListener('click', finish);
+})();
+
+/* ---------- SPEEDLINES ---------- */
+(function(){
+  const box=document.getElementById('speedlines');
+  const n=14;
+  for(let i=0;i<n;i++){
+    const l=document.createElement('div');
+    l.className='speedline';
+    l.style.top=(Math.random()*100)+'%';
+    l.style.width=(120+Math.random()*220)+'px';
+    l.style.animationDelay=(Math.random()*3)+'s';
+    l.style.animationDuration=(2.2+Math.random()*2.4)+'s';
+    box.appendChild(l);
+  }
+})();
+
+/* ---------- EQ BARS ---------- */
+(function(){
+  const box=document.getElementById('eqbars');
+  for(let i=0;i<28;i++){
+    const b=document.createElement('i');
+    b.style.animationDuration=(0.7+Math.random()*0.8)+'s';
+    box.appendChild(b);
+  }
+})();
+
+/* ---------- TICKER CONTENT ---------- */
+(function(){
+  const items=[
+    '<b>RUMEUR PADDOCK</b> — un top-team teste déjà une évolution de plancher pour Spa',
+    '<b>GP DU WEEK-END</b> — la pluie annoncée samedi pourrait rebattre les cartes des qualifs',
+    '<b>PENALITÉ</b> — 3 places sur la grille confirmées après l\'incident du Q3',
+    '<b>STRATÉGIE</b> — le pari à un seul arrêt divise déjà les stratèges du forum',
+    '<b>PIT STOP</b> — nouveau record de la saison chronométré à 1.98s',
+    '<b>MERCATO</b> — un contrat pilote serait bouclé avant la trêve estivale',
+    '<b>FAN ZONE</b> — plus de 400 messages sur le sujet "meilleur duel de la décennie"'
+  ];
+  const track=document.getElementById('tickerTrack');
+  const full=[...items,...items].map(t=>`<span>${t}</span>`).join('');
+  track.innerHTML=full;
+})();
+
+/* ---------- CATEGORY DATA (mutable, cliquable) ---------- */
+const cats=[
+  {key:'ecuries',color:'var(--ferrari)',icon:'🏎️',title:'Écuries & Voitures',desc:'Chassis, moteurs, développements techniques et guerres de développement entre écuries.',count:6214,posts:'sujets',latest:'par Scuderia_Fan',avatar:'SF'},
+  {key:'pilotes',color:'var(--redbull)',icon:'🏁',title:'Pilotes & Championnat',desc:'Performances, comparatifs de tours, et débats sans fin sur le meilleur pilote du plateau.',count:8902,posts:'sujets',latest:'par PoleSitter',avatar:'PS'},
+  {key:'calendrier',color:'var(--mclaren)',icon:'📅',title:'Calendrier & Courses',desc:'Débriefs de Grand Prix, previews de week-end et discussions live pendant les sessions.',count:5431,posts:'sujets',latest:'par TifosiParis',avatar:'TP'},
+  {key:'strategie',color:'var(--mercedes)',icon:'📐',title:'Stratégie & Règlement',desc:'Undercuts, fenêtres de pit-stop, et décryptage des nouvelles règles techniques.',count:3087,posts:'sujets',latest:'par PitWallPro',avatar:'PP'},
+  {key:'general',color:'var(--amber)',icon:'🛞',title:'Paddock Général',desc:'Tout ce qui ne rentre nulle part ailleurs : culture F1, historique, humour et anecdotes.',count:9775,posts:'sujets',latest:'par OldSchoolGP',avatar:'OG'},
+  {key:'simracing',color:'var(--aston)',icon:'🎮',title:'Simracing & Jeux vidéo',desc:'F1 25, ligues communautaires, setups et championnats organisés entre membres.',count:2640,posts:'sujets',latest:'par ApexPixel',avatar:'AP'}
+];
+
+/* ---------- TOPICS DATA (mutable, cliquable) ---------- */
+let topics=[
+  {catKey:'strategie',tag:'STRATÉGIE',tagColor:'var(--amber)',av:'MC',avColor:'var(--ferrari)',title:'Un arrêt ou deux à Monza : le grand débat stratégique',author:'MonzaChrono',replies:284,views:'12.4k',hot:true,last:'il y a 6 min',body:"Avec les températures prévues ce week-end, je pense qu'un seul arrêt sera jouable pour les top teams. Le graining sur le composé medium reste la grande inconnue. Vous en pensez quoi ?"},
+  {catKey:'pilotes',tag:'PILOTES',tagColor:'var(--redbull)',av:'AR',avColor:'var(--redbull)',title:'Le duel en Q3 restera dans les annales, on en parle ?',author:'ApexRider',replies:412,views:'21.1k',hot:true,last:'il y a 12 min',body:"Deux dixièmes sur le tour final, dans la dernière chicane en plus. On n'avait pas vu ça depuis des années en qualifs."},
+  {catKey:'ecuries',tag:'TECHNIQUE',tagColor:'var(--mercedes)',av:'FW',avColor:'var(--mercedes)',title:'Analyse : pourquoi le nouveau plancher change tout dans les virages rapides',author:'FloorWing',replies:96,views:'5.7k',hot:false,last:'il y a 41 min',body:"En regardant les images embarquées, le comportement en appui semble beaucoup plus stable qu'avant l'évolution. Ça se voit surtout dans les enchaînements rapides."},
+  {catKey:'pilotes',tag:'MERCATO',tagColor:'var(--mclaren)',av:'GP',avColor:'var(--mclaren)',title:'Rumeur : un transfert majeur se préparerait pour la saison prochaine',author:'GridPaper',replies:531,views:'34.9k',hot:true,last:'il y a 1 h',body:"Rien d'officiel pour l'instant, mais plusieurs journalistes paddock évoquent des discussions avancées. À prendre avec des pincettes."},
+  {catKey:'general',tag:'HISTOIRE',tagColor:'var(--aston)',av:'OG',avColor:'var(--aston)',title:"Le meilleur tour qualificatif de l'histoire, votre top 3 ?",author:'OldSchoolGP',replies:203,views:'9.3k',hot:false,last:'il y a 2 h',body:"Je lance le débat : pour moi il y a un tour sous la pluie qui reste indétrônable. Et vous, vos références ?"},
+  {catKey:'simracing',tag:'SIMRACING',tagColor:'var(--williams)',av:'AP',avColor:'var(--williams)',title:'Ligue communautaire saison 4 : les inscriptions sont ouvertes',author:'ApexPixel',replies:64,views:'2.1k',hot:false,last:'il y a 3 h',body:"Nouvelle saison, nouveau format : 12 courses, classement par équipe de 2. Les inscriptions sont ouvertes jusqu'à vendredi."}
+];
+
+function renderCategories(){
+  const grid=document.getElementById('catGrid');
+  grid.innerHTML=cats.map((c,i)=>`
+    <div class="cat-card" style="--cat-color:${c.color}" onclick="openCategory(${i})">
+      <div class="cat-top">
+        <div class="cat-icon">${c.icon}</div>
+        <div class="cat-count"><b>${c.count.toLocaleString('fr-FR')}</b>${c.posts}</div>
+      </div>
+      <h3>${c.title}</h3>
+      <p>${c.desc}</p>
+      <div class="cat-foot">
+        <div class="who"><span class="avatar" style="background:${c.color}">${c.avatar}</span> Dernier post ${c.latest}</div>
+        <span>→</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderTopics(){
+  const list=document.getElementById('topicsList');
+  list.innerHTML=topics.map((t,i)=>`
+    <div class="topic-row" onclick="openTopic(${i})">
+      <div class="tavatar" style="background:${t.avColor}">${t.av}</div>
+      <div class="topic-main">
+        <span class="tag" style="background:${t.tagColor}">${t.tag}</span>
+        <h4>${t.title} ${t.hot?'<span class="hot">🔥</span>':''}</h4>
+        <div class="meta">par ${t.author}</div>
+      </div>
+      <div class="tstat"><b>${t.replies}</b><span>Réponses</span></div>
+      <div class="tstat"><b>${t.views}</b><span>Vues</span></div>
+      <div class="tlast">Dernier post<b>${t.last}</b></div>
+    </div>
+  `).join('');
+}
+
+renderCategories();
+renderTopics();
+
+/* ================= MODAL SYSTEM ================= */
+const overlay=document.getElementById('modalOverlay');
+const modalBox=document.getElementById('modalBox');
+
+function openModal(html, wide){
+  modalBox.className='modal-box'+(wide?' wide':'');
+  modalBox.innerHTML=`<div class="modal-close" onclick="closeModal()">✕</div>`+html;
+  overlay.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeModal(){
+  overlay.classList.remove('open');
+  document.body.style.overflow='';
+}
+overlay.addEventListener('click',(e)=>{ if(e.target===overlay) closeModal(); });
+document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closeModal(); });
+
+/* ================= TOASTS ================= */
+function toast(msg, type){
+  const stack=document.getElementById('toastStack');
+  const el=document.createElement('div');
+  el.className='toast'+(type==='success'?' success':'');
+  el.innerHTML=`<span>${type==='success'?'✅':'🏁'}</span><span>${msg}</span>`;
+  stack.appendChild(el);
+  setTimeout(()=>{
+    el.classList.add('hide');
+    setTimeout(()=>el.remove(),320);
+  },3600);
+}
+
+/* ================= AUTH (visuel uniquement, aucun serveur) ================= */
+let currentUser=null;
+
+function openLogin(){
+  openModal(`
+    <div class="modal-eyebrow">Accès paddock</div>
+    <h3>Connexion</h3>
+    <p class="modal-desc">Retrouve tes sujets, tes écuries suivies et tes notifications.</p>
+    <div class="field"><label>Pseudo</label><input type="text" id="loginUser" placeholder="ex : TifosiParis"></div>
+    <div class="field"><label>Mot de passe</label><input type="password" id="loginPass" placeholder="••••••••"></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="submitLogin()">Se connecter</button>
+    </div>
+    <div class="modal-switch">Pas encore de compte ? <a onclick="openSignup()">Rejoindre le paddock</a></div>
+  `);
+}
+
+function openSignup(){
+  openModal(`
+    <div class="modal-eyebrow">Nouveau membre</div>
+    <h3>Créer un compte</h3>
+    <p class="modal-desc">Choisis ton pseudo et ton écurie de cœur pour rejoindre la discussion.</p>
+    <div class="field"><label>Pseudo</label><input type="text" id="signupUser" placeholder="ex : PitLaneRookie"></div>
+    <div class="field"><label>E-mail</label><input type="email" id="signupMail" placeholder="toi@exemple.com"></div>
+    <div class="field"><label>Écurie de cœur</label>
+      <select id="signupTeam">
+        <option>Ferrari</option><option>Red Bull Racing</option><option>McLaren</option>
+        <option>Mercedes</option><option>Aston Martin</option><option>Williams</option>
+        <option>Alpine</option><option>Haas</option><option>Aucune préférence</option>
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="submitSignup()">Créer mon compte</button>
+    </div>
+    <div class="modal-switch">Déjà membre ? <a onclick="openLogin()">Se connecter</a></div>
+  `);
+}
+
+function submitLogin(){
+  const user=document.getElementById('loginUser').value.trim();
+  if(!user){ toast('Entre un pseudo pour te connecter 🏁'); return; }
+  currentUser=user;
+  closeModal();
+  toast(`Connecté en tant que ${user}`, 'success');
+  updateAuthUI();
+}
+
+function submitSignup(){
+  const user=document.getElementById('signupUser').value.trim();
+  const team=document.getElementById('signupTeam').value;
+  if(!user){ toast('Choisis un pseudo pour continuer 🏁'); return; }
+  currentUser=user;
+  closeModal();
+  toast(`Bienvenue dans le paddock, ${user} (fan ${team}) 🎉`, 'success');
+  updateAuthUI();
+}
+
+function updateAuthUI(){
+  document.querySelectorAll('.nav-cta').forEach(el=>{
+    el.innerHTML=`<span style="font-size:13.5px;color:var(--chrome);">Connecté : <b style="color:var(--white);">${currentUser}</b></span>
+      <a class="btn btn-primary" href="#topics" onclick="toast('Ouvre un sujet plus bas pour répondre 👇')">Voir les sujets</a>`;
+  });
+}
+
+/* ================= CATEGORY MODAL ================= */
+function openCategory(i){
+  const c=cats[i];
+  const related=topics.filter(t=>t.catKey===c.key);
+  openModal(`
+    <div class="modal-eyebrow">${c.count.toLocaleString('fr-FR')} sujets</div>
+    <h3>${c.icon} ${c.title}</h3>
+    <p class="modal-desc">${c.desc}</p>
+    <div>
+      ${related.length ? related.map(t=>`
+        <div class="cm-topic">
+          <div>
+            <div class="t-title">${t.title}</div>
+            <div class="t-meta">par ${t.author} · ${t.last}</div>
+          </div>
+          <div class="t-replies">${t.replies}</div>
+        </div>
+      `).join('') : '<p class="modal-desc">Aucun sujet à la une pour l\'instant dans cette catégorie.</p>'}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="openNewTopic('${c.key}')">+ Nouveau sujet dans « ${c.title} »</button>
+    </div>
+  `, true);
+}
+
+/* ================= NEW TOPIC MODAL ================= */
+function openNewTopic(catKey){
+  const c=cats.find(x=>x.key===catKey) || cats[0];
+  openModal(`
+    <div class="modal-eyebrow">${c.title}</div>
+    <h3>Nouveau sujet</h3>
+    <div class="field"><label>Titre du sujet</label><input type="text" id="newTopicTitle" placeholder="ex : Votre pronostic pour le prochain GP ?"></div>
+    <div class="field"><label>Message</label><textarea id="newTopicBody" placeholder="Lance la discussion..."></textarea></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="submitNewTopic('${catKey}')">Publier le sujet</button>
+    </div>
+  `);
+}
+
+function submitNewTopic(catKey){
+  const title=document.getElementById('newTopicTitle').value.trim();
+  const body=document.getElementById('newTopicBody').value.trim();
+  if(!title || !body){ toast('Ajoute un titre et un message avant de publier 📝'); return; }
+  const c=cats.find(x=>x.key===catKey) || cats[0];
+  const author=currentUser || 'Invité_Paddock';
+  topics.unshift({
+    catKey:catKey, tag:c.title.split(' ')[0].toUpperCase(), tagColor:c.color,
+    av:author.slice(0,2).toUpperCase(), avColor:c.color,
+    title:title, author:author, replies:0, views:'0', hot:false, last:'à l\'instant', body:body
+  });
+  c.count++;
+  renderTopics();
+  renderCategories();
+  closeModal();
+  toast('Sujet publié dans le fil ! 🏁', 'success');
+  document.getElementById('topics').scrollIntoView({behavior:'smooth'});
+}
+
+/* ================= TOPIC THREAD MODAL ================= */
+const fakeReplies=[
+  {author:'PitCrewChief', text:"Bon point, mais je pense que ça dépendra surtout de la météo du samedi."},
+  {author:'DRSZoneFan', text:"Complètement d'accord, on a vu la même chose lors du dernier week-end."},
+];
+
+function openTopic(i){
+  const t=topics[i];
+  openModal(`
+    <div class="modal-eyebrow">${t.tag}</div>
+    <h3>${t.title}</h3>
+    <div class="thread-post op">
+      <div class="tp-head"><span class="avatar" style="background:${t.avColor}">${t.av}</span><b>${t.author}</b><span>· ${t.last}</span></div>
+      <p>${t.body || 'Discussion en cours sur ce sujet, rejoins le débat !'}</p>
+    </div>
+    <div id="threadReplies">
+      ${fakeReplies.map(r=>`
+        <div class="thread-post">
+          <div class="tp-head"><span class="avatar" style="background:var(--carbon2);color:var(--chrome);">${r.author.slice(0,2).toUpperCase()}</span><b>${r.author}</b></div>
+          <p>${r.text}</p>
+        </div>
+      `).join('')}
+    </div>
+    <div class="field"><label>Ta réponse</label><textarea id="replyBody" placeholder="Écris ta réponse..."></textarea></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="submitReply(${i})">Répondre</button>
+    </div>
+  `, true);
+}
+
+function submitReply(i){
+  const box=document.getElementById('replyBody');
+  const text=box.value.trim();
+  if(!text){ toast('Écris quelque chose avant de répondre 💬'); return; }
+  const author=currentUser || 'Invité_Paddock';
+  const wrap=document.getElementById('threadReplies');
+  const div=document.createElement('div');
+  div.className='thread-post reply-new';
+  div.innerHTML=`<div class="tp-head"><span class="avatar" style="background:var(--red);">${author.slice(0,2).toUpperCase()}</span><b>${author}</b><span>· à l'instant</span></div><p>${text}</p>`;
+  wrap.appendChild(div);
+  box.value='';
+  topics[i].replies++;
+  renderTopics();
+  toast('Réponse publiée', 'success');
+}
+
+/* ================= "VOIR TOUS LES SUJETS" MODAL ================= */
+function openAllTopics(){
+  openModal(`
+    <div class="modal-eyebrow">${topics.length} sujets</div>
+    <h3>Tous les sujets récents</h3>
+    <div>
+      ${topics.map((t,i)=>`
+        <div class="cm-topic" onclick="closeModal();setTimeout(()=>openTopic(${i}),260);" style="cursor:pointer;">
+          <div>
+            <div class="t-title">${t.title}</div>
+            <div class="t-meta">par ${t.author} · ${t.last}</div>
+          </div>
+          <div class="t-replies">${t.replies}</div>
+        </div>
+      `).join('')}
+    </div>
+  `, true);
+}
+
+/* ---------- STANDINGS DATA ---------- */
+(function(){
+  const drivers=[
+    {pos:1,name:'Oscar Piastri',team:'McLaren',pts:312,max:312,color:'var(--mclaren)'},
+    {pos:2,name:'Lando Norris',team:'McLaren',pts:298,max:312,color:'var(--mclaren)'},
+    {pos:3,name:'Max Verstappen',team:'Red Bull',pts:276,max:312,color:'var(--redbull)'},
+    {pos:4,name:'Charles Leclerc',team:'Ferrari',pts:221,max:312,color:'var(--ferrari)'},
+    {pos:5,name:'George Russell',team:'Mercedes',pts:198,max:312,color:'var(--mercedes)'},
+    {pos:6,name:'Lewis Hamilton',team:'Ferrari',pts:176,max:312,color:'var(--ferrari)'}
+  ];
+  const teams=[
+    {pos:1,name:'McLaren',pts:610,max:610,color:'var(--mclaren)'},
+    {pos:2,name:'Red Bull Racing',pts:401,max:610,color:'var(--redbull)'},
+    {pos:3,name:'Ferrari',pts:397,max:610,color:'var(--ferrari)'},
+    {pos:4,name:'Mercedes',pts:344,max:610,color:'var(--mercedes)'},
+    {pos:5,name:'Aston Martin',pts:151,max:610,color:'var(--aston)'},
+    {pos:6,name:'Williams',pts:112,max:610,color:'var(--williams)'}
+  ];
+  function render(id,data){
+    document.getElementById(id).innerHTML=data.map(d=>`
+      <div class="stand-row">
+        <div class="pos">${String(d.pos).padStart(2,'0')}</div>
+        <div>
+          <div class="name"><span>${d.name}${d.team?` <small>· ${d.team}</small>`:''}</span></div>
+          <div class="bar-track"><div class="bar-fill" data-width="${(d.pts/d.max*100).toFixed(0)}" style="background:${d.color}"></div></div>
+        </div>
+        <div class="pts">${d.pts}</div>
+      </div>
+    `).join('');
+  }
+  render('driverStandings',drivers);
+  render('teamStandings',teams);
+})();
+
+/* ---------- SCROLL REVEALS + COUNTERS + BARS ---------- */
+function startPageAnimations(){
+  const cards=document.querySelectorAll('.cat-card');
+  cards.forEach((c,i)=>setTimeout(()=>c.classList.add('reveal'), i*90));
+}
+
+const io=new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    if(entry.isIntersecting){
+      entry.target.classList.add('in');
+      if(entry.target.dataset.count && !entry.target.dataset.done){
+        entry.target.dataset.done='1';
+        animateCount(entry.target);
+      }
+      if(entry.target.classList.contains('bar-fill') && !entry.target.dataset.done){
+        entry.target.dataset.done='1';
+        requestAnimationFrame(()=>{ entry.target.style.width=entry.target.dataset.width+'%'; });
+      }
+    }
+  });
+},{threshold:0.35});
+
+function animateCount(el){
+  const target=parseInt(el.dataset.count,10);
+  const dur=1400;
+  const start=performance.now();
+  function tick(now){
+    const p=Math.min((now-start)/dur,1);
+    const eased=1-Math.pow(1-p,3);
+    el.textContent=Math.floor(eased*target).toLocaleString('fr-FR');
+    if(p<1)requestAnimationFrame(tick);
+    else el.textContent=target.toLocaleString('fr-FR');
+  }
+  requestAnimationFrame(tick);
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('[data-count]').forEach(el=>io.observe(el));
+  document.querySelectorAll('.bar-fill').forEach(el=>io.observe(el));
+  document.querySelectorAll('.stand-card, .topics, .pulse-item').forEach(el=>{
+    el.classList.add('reveal-on-scroll');
+    io.observe(el);
+  });
+});
+</script>
+</body>
+</html>

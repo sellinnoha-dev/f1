@@ -31,6 +31,19 @@ Un jeu Roblox de type **tycoon** : chaque joueur a son garage, des machines fabr
 
 > Dans Studio, la sauvegarde ne fonctionne pas tant que le jeu n'est pas publié. C'est normal : un message jaune s'affiche dans la fenêtre Output et le jeu marche quand même.
 
+## Travailler sans retélécharger à chaque fois (synchro Rojo)
+
+À faire **une seule fois** :
+1. Installe **GitHub Desktop** (https://desktop.github.com) et connecte-toi avec ton compte GitHub.
+2. Dans GitHub Desktop : **File → Clone repository**, choisis `sellinnoha-dev/f1`, puis **Clone**. Le projet arrive dans `Documents\GitHub\f1`.
+3. Dans ce dossier, double-clique sur **`start-rojo.bat`**. La première fois, il télécharge Rojo et installe le plugin dans Studio. Si Windows affiche « Windows a protégé votre ordinateur », clique sur **Informations complémentaires → Exécuter quand même**.
+4. Redémarre Roblox Studio, puis ouvre `Documents\GitHub\f1\build\GarageTycoon.rbxlx`.
+
+À chaque session de travail :
+1. Double-clique sur **`start-rojo.bat`** et laisse la fenêtre noire ouverte.
+2. Dans Studio : onglet **Plugins → Rojo → Connect**.
+3. Quand Claude a envoyé une nouvelle version : dans GitHub Desktop, clique sur **Fetch origin** puis **Pull origin**. Studio se met à jour tout seul, il ne reste qu'à appuyer sur **F5**.
+
 ## Publier le jeu sur Roblox
 
 1. Dans Studio : **File → Publish to Roblox**, puis choisis un nom et une description.

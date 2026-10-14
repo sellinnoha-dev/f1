@@ -33,7 +33,10 @@ function Update-Project {
 	if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
 	Expand-Archive $zip $tmp -Force
 	$source = Get-ChildItem $tmp -Directory | Select-Object -First 1
-	robocopy $source.FullName $Project /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+	# Ne jamais écraser le fichier de jeu déjà présent : il peut contenir tes modèles
+	$keep = @()
+	if (Test-Path (Join-Path $Project "build\GarageTycoon.rbxlx")) { $keep = @("/XF", "GarageTycoon.rbxlx") }
+	robocopy $source.FullName $Project /MIR /NFL /NDL /NJH /NJS /NP @keep | Out-Null
 	Remove-Item $zip -Force
 	Remove-Item $tmp -Recurse -Force
 }

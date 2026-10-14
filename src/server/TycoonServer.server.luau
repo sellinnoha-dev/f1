@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Debris = game:GetService("Debris")
+local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
@@ -118,6 +119,64 @@ end
 -- Les pièces qui roulent sur le tapis
 -- ============================================================
 
+-- ============================================================
+-- Modèles de la Boîte à outils (optionnels)
+-- Range tes modèles dans ServerStorage > Assets, avec les noms indiqués
+-- dans Config ("model = ..."). S'ils n'y sont pas, on garde les formes simples.
+-- ============================================================
+
+local function getAsset(name)
+	local folder = ServerStorage:FindFirstChild("Assets")
+	return name and folder and folder:FindFirstChild(name)
+end
+
+-- Copie un modèle sans ses scripts (sécurité) et le met à la bonne taille
+local function cloneAsset(asset, targetSize)
+	local clone = asset:Clone()
+	for _, descendant in ipairs(clone:GetDescendants()) do
+		if descendant:IsA("LuaSourceContainer") then
+			descendant:Destroy()
+		end
+	end
+	if clone:IsA("BasePart") then
+		local biggest = math.max(clone.Size.X, clone.Size.Y, clone.Size.Z)
+		clone.Size *= targetSize / biggest
+	elseif clone:IsA("Model") then
+		local _, size = clone:GetBoundingBox()
+		local biggest = math.max(size.X, size.Y, size.Z)
+		clone:ScaleTo(clone:GetScale() * targetSize / biggest)
+	else
+		clone:Destroy()
+		return nil
+	end
+	return clone
+end
+
+local function getParts(object)
+	if object:IsA("BasePart") then
+		return { object }
+	end
+	local parts = {}
+	for _, descendant in ipairs(object:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			table.insert(parts, descendant)
+		end
+	end
+	return parts
+end
+
+-- Retrouve la pièce (ou le modèle) qui porte la valeur à partir de la partie touchée
+local function getDrop(hit)
+	local current = hit
+	while current and current ~= workspace do
+		if current:GetAttribute("Value") then
+			return current
+		end
+		current = current.Parent
+	end
+	return nil
+end
+
 -- Forme des pièces auto qui sortent des machines (voir "drop" dans Config)
 local DROP_SHAPES = {
 	bolt = { size = Vector3.new(1.4, 0.7, 0.7), shape = Enum.PartType.Cylinder, material = Enum.Material.Metal },
@@ -127,35 +186,81 @@ local DROP_SHAPES = {
 	rim = { size = Vector3.new(0.6, 2, 2), shape = Enum.PartType.Cylinder, material = Enum.Material.Foil, flat = true },
 }
 
+-- Crée une pièce à partir d'un modèle de la Boîte à outils, soudé en un seul bloc
+local function makeDropFromAsset(asset, look)
+	local clone = cloneAsset(asset, math.max(look.size.X, look.size.Y, look.size.Z) * 1.1)
+	if not clone then
+		return nil, nil
+	end
+	local parts = getParts(clone)
+	if #parts == 0 then
+		clone:Destroy()
+		return nil, nil
+	end
+	local root = parts[1]
+	if clone:IsA("Model") then
+		clone.PrimaryPart = clone.PrimaryPart or root
+		root = clone.PrimaryPart
+	end
+	for _, part in ipairs(parts) do
+		part.Anchored = false
+		part.CanCollide = true
+		if part ~= root then
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = root
+			weld.Part1 = part
+			weld.Parent = root
+		end
+	end
+	return clone, root
+end
+
 local function spawnDrop(plot, item)
 	local look = DROP_SHAPES[item.drop] or DROP_SHAPES.bolt
-	local drop = Instance.new("Part")
-	drop.Name = "Drop"
-	drop.Shape = look.shape
-	drop.Size = look.size
-	drop.Color = item.color
-	drop.Material = look.material
-	drop.CFrame = at(plot, -25, 5, item.z)
-	if look.flat then
-		-- Pneus et jantes posés à plat sur le tapis
-		drop.CFrame *= CFrame.Angles(0, 0, math.rad(90))
+	local spawnCFrame = at(plot, -25, 5, item.z)
+	local drop, root
+
+	local asset = getAsset(item.model)
+	if asset then
+		drop, root = makeDropFromAsset(asset, look)
 	end
+	if drop then
+		-- Centre le modèle sur le point de sortie de la machine
+		local box = drop:IsA("Model") and drop:GetBoundingBox() or drop.CFrame
+		drop:PivotTo(drop:GetPivot() + (spawnCFrame.Position - box.Position))
+	else
+		drop = Instance.new("Part")
+		drop.Shape = look.shape
+		drop.Size = look.size
+		drop.Color = item.color
+		drop.Material = look.material
+		drop.CFrame = spawnCFrame
+		if look.flat then
+			-- Pneus et jantes posés à plat sur le tapis
+			drop.CFrame *= CFrame.Angles(0, 0, math.rad(90))
+		end
+		drop:SetAttribute("Tintable", true)
+		root = drop
+	end
+
+	drop.Name = "Drop"
 	drop:SetAttribute("Value", item.value)
 	drop:SetAttribute("Plot", plot.index)
 	drop.Parent = plot.drops
 	-- Le serveur gère la physique : un tricheur ne peut pas déplacer les pièces
-	drop:SetNetworkOwner(nil)
+	root:SetNetworkOwner(nil)
 	Debris:AddItem(drop, Config.DropLifetime)
 end
 
 -- Une pièce touche le collecteur : on la vend
 local function onCollect(plot, hit)
-	local value = hit:GetAttribute("Value")
-	if not value or hit:GetAttribute("Plot") ~= plot.index then
+	local drop = getDrop(hit)
+	local value = drop and drop:GetAttribute("Value")
+	if not value or drop:GetAttribute("Plot") ~= plot.index then
 		return
 	end
-	hit:SetAttribute("Plot", nil) -- empêche de compter la même pièce deux fois
-	hit:Destroy()
+	drop:SetAttribute("Plot", nil) -- empêche de compter la même pièce deux fois
+	drop:Destroy()
 
 	local owner = plot.owner
 	local cash = owner and getCash(owner)
@@ -211,13 +316,16 @@ local function buildUpgrader(plot, item, model)
 
 	local tag = "Upgraded_" .. item.id
 	gate.Touched:Connect(function(hit)
-		local value = hit:GetAttribute("Value")
-		if not value or hit:GetAttribute("Plot") ~= plot.index or hit:GetAttribute(tag) then
+		local drop = getDrop(hit)
+		local value = drop and drop:GetAttribute("Value")
+		if not value or drop:GetAttribute("Plot") ~= plot.index or drop:GetAttribute(tag) then
 			return
 		end
-		hit:SetAttribute(tag, true)
-		hit:SetAttribute("Value", value * item.multiplier)
-		hit.Color = item.color -- la pièce prend la couleur de la machine
+		drop:SetAttribute(tag, true)
+		drop:SetAttribute("Value", value * item.multiplier)
+		if drop:GetAttribute("Tintable") then
+			drop.Color = item.color -- la pièce prend la couleur de la machine
+		end
 	end)
 end
 
@@ -236,6 +344,43 @@ local function buildWalls(plot, item, model)
 	end
 end
 
+-- Fait tourner une voiture sur son podium
+local function spinOnPodium(car, base)
+	task.spawn(function()
+		local angle = 0
+		while car.Parent do
+			angle += math.rad(1)
+			car:PivotTo(base * CFrame.Angles(0, angle, 0))
+			task.wait(1 / 30)
+		end
+	end)
+end
+
+-- Place une voiture de la Boîte à outils sur le podium. Renvoie false si impossible.
+local function placeAssetCar(item, model, base)
+	local asset = getAsset(item.model)
+	local clone = asset and cloneAsset(asset, item.style == "super" and 12 or 11)
+	if not clone then
+		return false
+	end
+	local car = clone
+	if clone:IsA("BasePart") then
+		car = Instance.new("Model")
+		clone.Parent = car
+	end
+	for _, part in ipairs(getParts(car)) do
+		part.Anchored = true
+	end
+	-- Le point de pivot devient le dessous de la voiture, pour la poser pile sur le podium
+	local box, size = car:GetBoundingBox()
+	car.WorldPivot = CFrame.new(box.Position - Vector3.new(0, size.Y / 2, 0))
+	car.Name = "Car"
+	car.Parent = model
+	car:PivotTo(base)
+	spinOnPodium(car, base)
+	return true
+end
+
 -- Voiture de showroom sur un podium qui tourne
 local function buildCar(plot, item, model)
 	local p = item.position
@@ -246,6 +391,10 @@ local function buildCar(plot, item, model)
 	})
 
 	local base = at(plot, p.X, 1, p.Z) -- dessus du podium
+	if placeAssetCar(item, model, base) then
+		return
+	end
+
 	local car = Instance.new("Model")
 	car.Name = "Car"
 	car.Parent = model
@@ -283,16 +432,8 @@ local function buildCar(plot, item, model)
 		end
 	end
 
-	-- Rotation du podium
 	car.WorldPivot = base
-	task.spawn(function()
-		local angle = 0
-		while car.Parent do
-			angle += math.rad(1)
-			car:PivotTo(base * CFrame.Angles(0, angle, 0))
-			task.wait(1 / 30)
-		end
-	end)
+	spinOnPodium(car, base)
 end
 
 local builders = {

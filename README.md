@@ -39,6 +39,25 @@ Un jeu Roblox de type **tycoon** : chaque joueur a son garage, des machines fabr
 3. Dans Studio, ouvre le fichier indiqué dans la fenêtre noire (`C:\Users\<toi>\GarageTycoon\project\build\GarageTycoon.rbxlx`), puis **Plugins → Rojo → Connect**.
 4. Laisse la fenêtre noire ouverte : toutes les minutes, elle vérifie s'il y a une nouvelle version sur GitHub et l'envoie toute seule dans Studio. Il ne reste qu'à appuyer sur **F5**.
 
+## Utiliser de vrais modèles de la Boîte à outils
+
+Le jeu peut remplacer ses formes simples par des modèles choisis dans la Boîte à outils de Studio.
+1. Dans **ServerStorage**, crée un dossier nommé **`Assets`**.
+2. Range dedans tes modèles avec exactement ces noms :
+
+| Nom | Utilisé pour |
+|---|---|
+| `Bolt` | pièce de la Bolt Workbench |
+| `Tire` | pièce de la Tire Station |
+| `Engine` | pièce de l'Engine Bench |
+| `Panel` | pièce de la Body Shop Line |
+| `Rim` | pièce de la Rim Factory |
+| `SportCar` | voiture du premier podium |
+| `Supercar` | voiture du second podium |
+
+Le jeu les met à la bonne taille et supprime les scripts qu'ils contiennent. Il manque un modèle ? La forme simple est utilisée à la place.
+Enregistre ton jeu (**Fichier → Enregistrer sous**) en dehors du dossier `project`, par exemple `C:\Users\<toi>\GarageTycoon\MonGarage.rbxlx`.
+
 ## Publier le jeu sur Roblox
 
 1. Dans Studio : **File → Publish to Roblox**, puis choisis un nom et une description.

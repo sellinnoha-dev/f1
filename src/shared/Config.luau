@@ -11,12 +11,17 @@ Config.StartingCash = 0
 
 -- Mode test : argent de départ quand tu joues dans Roblox Studio (F5).
 -- N'a AUCUN effet dans le vrai jeu publié. Mets 0 pour tester la vraie progression.
-Config.StudioTestCash = 250000
+Config.StudioTestCash = 0
 
 -- Nombre de garages sur la carte (= nombre max de joueurs par serveur)
 Config.PlotCount = 4
 -- Distance entre le centre de la carte et chaque garage (en studs)
 Config.PlotDistance = 100
+
+-- Rebirth : quand tout est acheté, le joueur peut recommencer à zéro contre un bonus permanent
+Config.RebirthCost = 150000 -- prix du 1er rebirth (x2 pour le 2e, x3 pour le 3e...)
+Config.RebirthBonus = 0.5 -- +50 % d'argent par rebirth
+Config.RebirthButton = Vector3.new(16, 0, -8)
 
 -- Vitesse du tapis roulant (studs par seconde)
 Config.ConveyorSpeed = 8

@@ -48,7 +48,31 @@ padding.PaddingTop = UDim.new(0, 10)
 padding.PaddingBottom = UDim.new(0, 10)
 padding.Parent = frame
 
-local cash = player:WaitForChild("leaderstats"):WaitForChild("Cash")
+-- Bonus de rebirth affiché au-dessus du compteur
+local bonusLabel = Instance.new("TextLabel")
+bonusLabel.AnchorPoint = Vector2.new(0.5, 1)
+bonusLabel.Position = UDim2.new(0.5, 0, 0, -4)
+bonusLabel.Size = UDim2.new(1, 0, 0, 22)
+bonusLabel.BackgroundTransparency = 1
+bonusLabel.Font = Enum.Font.GothamBold
+bonusLabel.TextScaled = true
+bonusLabel.TextColor3 = Color3.fromRGB(200, 140, 255)
+bonusLabel.TextStrokeTransparency = 0.3
+bonusLabel.Visible = false
+bonusLabel.Parent = frame
+
+local leaderstats = player:WaitForChild("leaderstats")
+local cash = leaderstats:WaitForChild("Cash")
+local rebirths = leaderstats:WaitForChild("Rebirths")
+local Config = require(ReplicatedStorage:WaitForChild("Config"))
+
+local function updateBonus()
+	local bonus = math.floor(Config.RebirthBonus * rebirths.Value * 100 + 0.5)
+	bonusLabel.Text = "Rebirth " .. rebirths.Value .. "  ·  +" .. bonus .. "% cash"
+	bonusLabel.Visible = rebirths.Value > 0
+end
+rebirths.Changed:Connect(updateBonus)
+updateBonus()
 local lastValue = cash.Value
 
 local function update()

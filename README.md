@@ -41,7 +41,7 @@ Un jeu Roblox de type **tycoon** : chaque joueur a son garage, des machines fabr
 local H = game:GetService("HttpService") H.HttpEnabled = true loadstring(H:GetAsync("https://raw.githubusercontent.com/sellinnoha-dev/f1/main/tools/StudioUpdate.luau?v=" .. os.time(), true))()
 ```
 
-4. La Sortie affiche « Mise à jour terminée : 4/4 ». Fais **Ctrl + S** puis **F5**.
+4. La Sortie affiche « Mise à jour terminée : 5/5 ». Fais **Ctrl + S** puis **F5**.
 
 Astuce : la prochaine fois, clique dans la barre de commande et appuie sur **flèche du haut** pour retrouver la ligne.
 

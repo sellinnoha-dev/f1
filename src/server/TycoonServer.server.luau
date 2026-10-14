@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Debris = game:GetService("Debris")
+local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -25,6 +26,7 @@ local COLOR_DARK = Color3.fromRGB(35, 35, 40)
 local COLOR_BUTTON = Color3.fromRGB(0, 200, 90)
 local COLOR_BUTTON_DENIED = Color3.fromRGB(220, 40, 40)
 local COLOR_GOLD = Color3.fromRGB(255, 200, 0)
+local COLOR_REBIRTH = Color3.fromRGB(170, 70, 255)
 
 -- Accès rapide à un objet par son id : itemsById["paint"]
 local itemsById = {}
@@ -114,6 +116,12 @@ end
 local function getCash(player)
 	local stats = player:FindFirstChild("leaderstats")
 	return stats and stats:FindFirstChild("Cash")
+end
+
+local function getRebirths(player)
+	local stats = player:FindFirstChild("leaderstats")
+	local rebirths = stats and stats:FindFirstChild("Rebirths")
+	return rebirths and rebirths.Value or 0
 end
 
 -- ============================================================
@@ -207,6 +215,9 @@ local function makeDropFromAsset(asset, look)
 		part.Anchored = false
 		part.CanCollide = true
 		if part ~= root then
+			-- Seule la partie principale détecte les contacts : moins de calculs
+			part.Massless = true
+			part.CanTouch = false
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = root
 			weld.Part1 = part
@@ -266,7 +277,7 @@ local function onCollect(plot, hit)
 	local owner = plot.owner
 	local cash = owner and getCash(owner)
 	if cash then
-		local multiplier = owner:GetAttribute("CashMultiplier") or 1
+		local multiplier = (owner:GetAttribute("CashMultiplier") or 1) * (1 + Config.RebirthBonus * getRebirths(owner))
 		cash.Value += math.floor(value * multiplier + 0.5)
 	end
 end
@@ -345,16 +356,41 @@ local function buildWalls(plot, item, model)
 	end
 end
 
--- Fait tourner une voiture sur son podium
+-- Prépare une voiture à tourner sur son podium.
+-- La rotation est faite par chaque joueur (script CarSpinner) : le serveur ne déplace rien,
+-- donc pas de lag réseau, même avec des voitures de centaines de pièces.
 local function spinOnPodium(car, base)
-	task.spawn(function()
-		local angle = 0
-		while car.Parent do
-			angle += math.rad(1)
-			car:PivotTo(base * CFrame.Angles(0, angle, 0))
-			task.wait(1 / 30)
+	local parts = getParts(car)
+	if #parts == 0 then
+		return
+	end
+	-- La plus grosse pièce sert d'axe, toutes les autres lui sont soudées
+	local root = parts[1]
+	for _, part in ipairs(parts) do
+		if part.Size.Magnitude > root.Size.Magnitude then
+			root = part
 		end
-	end)
+	end
+	for _, part in ipairs(parts) do
+		part.CanCollide = false
+		part.CanTouch = false
+		if part ~= root then
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = root
+			weld.Part1 = part
+			weld.Parent = root
+		end
+	end
+	for _, part in ipairs(parts) do
+		if part ~= root then
+			part.Anchored = false
+			part.Massless = true
+		end
+	end
+	root.Anchored = true
+	car.PrimaryPart = root
+	car:SetAttribute("SpinBase", base)
+	CollectionService:AddTag(car, "SpinningCar")
 end
 
 -- Place une voiture de la Boîte à outils sur le podium. Renvoie false si impossible.
@@ -457,6 +493,20 @@ end
 
 local refreshButtons -- déclarée ici car createButton en a besoin
 
+-- Pas assez d'argent : le bouton clignote en rouge
+local function flashDenied(button)
+	if button:GetAttribute("Flashing") then
+		return
+	end
+	local original = button.Color
+	button:SetAttribute("Flashing", true)
+	button.Color = COLOR_BUTTON_DENIED
+	task.delay(0.5, function()
+		button.Color = original
+		button:SetAttribute("Flashing", nil)
+	end)
+end
+
 local function tryBuy(plot, item, button, hit)
 	local player = Players:GetPlayerFromCharacter(hit.Parent)
 	if not player or player ~= plot.owner or plot.buying then
@@ -469,15 +519,7 @@ local function tryBuy(plot, item, button, hit)
 	end
 
 	if cash.Value < item.price then
-		-- Pas assez d'argent : le bouton clignote en rouge
-		if not button:GetAttribute("Flashing") then
-			button:SetAttribute("Flashing", true)
-			button.Color = COLOR_BUTTON_DENIED
-			task.delay(0.5, function()
-				button.Color = COLOR_BUTTON
-				button:SetAttribute("Flashing", nil)
-			end)
-		end
+		flashDenied(button)
 		return
 	end
 
@@ -503,6 +545,61 @@ local function createButton(plot, item)
 	return button
 end
 
+-- ============================================================
+-- Rebirth : quand tout est acheté, on recommence à zéro
+-- contre un bonus d'argent permanent
+-- ============================================================
+
+local function getRebirthCost(player)
+	return Config.RebirthCost * (getRebirths(player) + 1)
+end
+
+local function doRebirth(plot, button, hit)
+	local player = Players:GetPlayerFromCharacter(hit.Parent)
+	if not player or player ~= plot.owner or plot.buying then
+		return
+	end
+	local data = playerData[player]
+	local cash = getCash(player)
+	local rebirths = player.leaderstats:FindFirstChild("Rebirths")
+	if not data or not cash or not rebirths then
+		return
+	end
+	if cash.Value < getRebirthCost(player) then
+		flashDenied(button)
+		return
+	end
+
+	plot.buying = true
+	rebirths.Value += 1
+	cash.Value = Config.StartingCash
+	data.owned = {}
+	plot.items:ClearAllChildren()
+	plot.drops:ClearAllChildren()
+	for _, oldButton in pairs(plot.buttons) do
+		oldButton:Destroy()
+	end
+	plot.buttons = {}
+	plot.rebirthButton:Destroy()
+	plot.rebirthButton = nil
+	refreshButtons(plot)
+	plot.buying = false
+end
+
+local function createRebirthButton(plot)
+	local pos = Config.RebirthButton
+	local button = makePart(plot.model, {
+		Name = "RebirthButton", Size = Vector3.new(5, 0.6, 5),
+		CFrame = at(plot, pos.X, 0.3, pos.Z), Color = COLOR_REBIRTH, Material = Enum.Material.Neon,
+	})
+	local bonus = math.floor(Config.RebirthBonus * 100 + 0.5)
+	createBillboard(button, "REBIRTH (+" .. bonus .. "% cash)", "$" .. formatMoney(getRebirthCost(plot.owner)), 3, 9)
+	button.Touched:Connect(function(hit)
+		doRebirth(plot, button, hit)
+	end)
+	return button
+end
+
 -- Affiche les boutons des objets débloqués et pas encore achetés
 function refreshButtons(plot)
 	local data = plot.owner and playerData[plot.owner]
@@ -518,6 +615,21 @@ function refreshButtons(plot)
 			button:Destroy()
 			plot.buttons[item.id] = nil
 		end
+	end
+
+	-- Le bouton de rebirth apparaît quand tout est acheté
+	local allOwned = true
+	for _, item in ipairs(Config.Items) do
+		if not data.owned[item.id] then
+			allOwned = false
+			break
+		end
+	end
+	if allOwned and not plot.rebirthButton then
+		plot.rebirthButton = createRebirthButton(plot)
+	elseif not allOwned and plot.rebirthButton then
+		plot.rebirthButton:Destroy()
+		plot.rebirthButton = nil
 	end
 end
 
@@ -691,6 +803,10 @@ local function releasePlot(plot)
 		plot.passPad:Destroy()
 		plot.passPad = nil
 	end
+	if plot.rebirthButton then
+		plot.rebirthButton:Destroy()
+		plot.rebirthButton = nil
+	end
 	plot.signLabel.Text = "Free Garage"
 end
 
@@ -716,7 +832,7 @@ local function loadData(player)
 	if RunService:IsStudio() and Config.StudioTestCash > 0 then
 		startingCash = Config.StudioTestCash -- mode test : uniquement dans Studio
 	end
-	local data = { owned = {}, cash = startingCash, loaded = true }
+	local data = { owned = {}, cash = startingCash, rebirths = 0, loaded = true }
 	if not dataStore then
 		return data
 	end
@@ -729,6 +845,7 @@ local function loadData(player)
 		data.loaded = false
 	elseif type(saved) == "table" then
 		data.cash = tonumber(saved.cash) or data.cash
+		data.rebirths = tonumber(saved.rebirths) or 0
 		if type(saved.owned) == "table" then
 			for _, id in ipairs(saved.owned) do
 				if itemsById[id] then
@@ -751,7 +868,11 @@ local function saveData(player)
 		table.insert(owned, id)
 	end
 	local ok, err = pcall(function()
-		dataStore:SetAsync("player_" .. player.UserId, { cash = cash.Value, owned = owned })
+		dataStore:SetAsync("player_" .. player.UserId, {
+			cash = cash.Value,
+			owned = owned,
+			rebirths = getRebirths(player),
+		})
 	end)
 	if not ok then
 		warn("[Tycoon] Sauvegarde impossible pour", player.Name, err)
@@ -776,6 +897,10 @@ local function onPlayerAdded(player)
 	cash.Name = "Cash"
 	cash.Value = data.cash
 	cash.Parent = leaderstats
+	local rebirths = Instance.new("IntValue")
+	rebirths.Name = "Rebirths"
+	rebirths.Value = data.rebirths
+	rebirths.Parent = leaderstats
 	leaderstats.Parent = player
 
 	player:SetAttribute("CashMultiplier", 1)

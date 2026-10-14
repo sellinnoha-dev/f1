@@ -15,6 +15,7 @@ local FILES = {
 	{ "shared/FormatMoney.luau", game:GetService("ReplicatedStorage"), "FormatMoney", "ModuleScript" },
 	{ "server/TycoonServer.server.luau", game:GetService("ServerScriptService"), "TycoonServer", "Script" },
 	{ "client/CashHud.client.luau", game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"), "CashHud", "LocalScript" },
+	{ "client/CarSpinner.client.luau", game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"), "CarSpinner", "LocalScript" },
 }
 
 local stamp = tostring(os.time()) -- évite de récupérer une vieille version en cache

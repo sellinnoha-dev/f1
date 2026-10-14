@@ -102,6 +102,9 @@
       "StarterPlayerScripts": {
         "CashHud": {
           "$path": "src/client/CashHud.client.luau"
+        },
+        "CarSpinner": {
+          "$path": "src/client/CarSpinner.client.luau"
         }
       }
     },

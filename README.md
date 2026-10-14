@@ -17,6 +17,8 @@ Un jeu Roblox de type **tycoon** : chaque joueur a son garage, des machines fabr
 | `build/GarageTycoon.rbxlx` | Le jeu complet, prêt à ouvrir dans Roblox Studio |
 | `src/shared/Config.luau` | **Les réglages** : prix, gains, ordre des objets. C'est ici que tu équilibres le jeu |
 | `src/server/TycoonServer.server.luau` | Le moteur du jeu (garages, machines, argent, sauvegarde) |
+| `src/client/CashHud.client.luau` | Le compteur d'argent affiché en bas de l'écran |
+| `src/shared/FormatMoney.luau` | Affiche les montants en version courte (1.5K, 2M…) |
 | `default.project.json` | Fichier [Rojo](https://rojo.space) qui sert à reconstruire le `.rbxlx` à partir du code |
 
 ## Lancer le jeu sur ton PC (Windows)

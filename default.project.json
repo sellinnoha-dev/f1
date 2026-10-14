@@ -3,10 +3,17 @@
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
-      "Config": { "$path": "src/shared/Config.luau" }
+      "Config": {
+        "$path": "src/shared/Config.luau"
+      },
+      "FormatMoney": {
+        "$path": "src/shared/FormatMoney.luau"
+      }
     },
     "ServerScriptService": {
-      "TycoonServer": { "$path": "src/server/TycoonServer.server.luau" }
+      "TycoonServer": {
+        "$path": "src/server/TycoonServer.server.luau"
+      }
     },
     "Workspace": {
       "Baseplate": {
@@ -14,9 +21,21 @@
         "$properties": {
           "Anchored": true,
           "Locked": true,
-          "Size": [512, 16, 512],
-          "Position": [0, -8, 0],
-          "Color": [0.3, 0.55, 0.25],
+          "Size": [
+            512,
+            16,
+            512
+          ],
+          "Position": [
+            0,
+            -8,
+            0
+          ],
+          "Color": [
+            0.3,
+            0.55,
+            0.25
+          ],
           "Material": "Grass"
         }
       },
@@ -24,9 +43,34 @@
         "$className": "SpawnLocation",
         "$properties": {
           "Anchored": true,
-          "Size": [12, 1, 12],
-          "Position": [0, 0.5, 0]
+          "Size": [
+            12,
+            1,
+            12
+          ],
+          "Position": [
+            0,
+            0.5,
+            0
+          ]
         }
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "CashHud": {
+          "$path": "src/client/CashHud.client.luau"
+        }
+      }
+    },
+    "Players": {
+      "$properties": {
+        "CharacterAutoLoads": false
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "ClockTime": 14.5
       }
     }
   }

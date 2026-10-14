@@ -12,6 +12,10 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Debris = game:GetService("Debris")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
+local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
+
+-- On fait apparaître les persos nous-mêmes, directement dans leur garage
+Players.CharacterAutoLoads = false
 
 -- Couleurs utilisées partout
 local COLOR_FLOOR = Color3.fromRGB(70, 70, 75)
@@ -50,19 +54,6 @@ local playerData = {} -- [player] = { owned = {}, cash = n, loaded = bool, plot 
 -- ============================================================
 -- Petits outils
 -- ============================================================
-
--- 1500 -> "1.5K", 2000000 -> "2M"
-local function formatMoney(n)
-	local text
-	if n >= 1e6 then
-		text = string.format("%.1fM", n / 1e6)
-	elseif n >= 1e3 then
-		text = string.format("%.1fK", n / 1e3)
-	else
-		return tostring(n)
-	end
-	return (text:gsub("%.0([KM])", "%1"))
-end
 
 -- Crée une pièce ancrée avec les propriétés données, puis la place dans parent
 local function makePart(parent, props)
@@ -465,12 +456,30 @@ local function createPlot(index)
 	label.Parent = surface
 	plot.signLabel = label
 
+	-- Route entre le centre de la carte et l'entrée du garage
+	makePart(model, {
+		Name = "Road", Size = Vector3.new(16, 0.2, 48), CFrame = at(plot, 0, -0.9, 64),
+		Color = Color3.fromRGB(45, 45, 50), Material = Enum.Material.Asphalt,
+	})
+	for z = 44, 84, 8 do
+		makePart(model, {
+			Name = "RoadLine", Size = Vector3.new(0.6, 0.2, 3), CFrame = at(plot, 0, -0.78, z),
+			Color = Color3.new(1, 1, 1), Material = Enum.Material.SmoothPlastic,
+		})
+	end
+
 	return plot
 end
 
 for i = 1, Config.PlotCount do
 	plots[i] = createPlot(i)
 end
+
+-- Place centrale où se rejoignent les routes
+makePart(plotsFolder, {
+	Name = "Plaza", Size = Vector3.new(30, 0.2, 30), CFrame = CFrame.new(0, 0.12, 0),
+	Color = Color3.fromRGB(45, 45, 50), Material = Enum.Material.Asphalt,
+})
 
 local function getFreePlot()
 	for _, plot in ipairs(plots) do
@@ -512,14 +521,17 @@ local function releasePlot(plot)
 	plot.signLabel.Text = "Free Garage"
 end
 
-local function teleportToPlot(player, character)
-	local data = playerData[player]
-	local plot = data and data.plot
-	if not plot or not character:WaitForChild("HumanoidRootPart", 5) then
+-- Fait (ré)apparaître le perso dans son garage
+local function spawnPlayer(player)
+	if not player.Parent then
 		return
 	end
-	task.wait(0.1) -- laisse Roblox placer le perso au spawn avant de le déplacer
-	character:PivotTo(at(plot, 0, 4, 30))
+	player:LoadCharacter() -- attend que le perso soit chargé
+	local data = playerData[player]
+	local character = player.Character
+	if character and data and data.plot then
+		character:PivotTo(at(data.plot, 0, 4, 30))
+	end
 end
 
 -- ============================================================
@@ -602,16 +614,19 @@ local function onPlayerAdded(player)
 	local plot = getFreePlot()
 	if not plot then
 		warn("[Tycoon] Plus de garage libre pour", player.Name)
+		player:LoadCharacter()
 		return
 	end
 	assignPlot(plot, player)
 
+	-- Quand le perso meurt, il réapparaît dans son garage après quelques secondes
 	player.CharacterAdded:Connect(function(character)
-		teleportToPlot(player, character)
+		character:WaitForChild("Humanoid").Died:Connect(function()
+			task.wait(Players.RespawnTime)
+			spawnPlayer(player)
+		end)
 	end)
-	if player.Character then
-		teleportToPlot(player, player.Character)
-	end
+	spawnPlayer(player)
 end
 
 local function onPlayerRemoving(player)

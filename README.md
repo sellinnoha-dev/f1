@@ -1,0 +1,61 @@
+# Garage Tycoon 🚗
+
+Un jeu Roblox de type **tycoon** : chaque joueur a son garage, des machines fabriquent des pièces auto qui roulent sur un tapis jusqu'au collecteur, et l'argent gagné sert à acheter de nouvelles machines, des améliorations et des voitures de showroom.
+
+## Ce que contient la version 1
+
+- 4 garages par serveur, attribués automatiquement aux joueurs
+- 5 machines de production (dropper), 2 améliorations (x2 et x1.5), des murs, 2 voitures de showroom sur podium tournant
+- Environ 25 à 30 minutes de progression
+- Sauvegarde automatique de l'argent et des achats
+- Un Game Pass « Argent x2 » prêt à brancher (c'est lui qui peut rapporter de vrais Robux)
+
+## Organisation du dépôt
+
+| Fichier | Rôle |
+|---|---|
+| `build/GarageTycoon.rbxlx` | Le jeu complet, prêt à ouvrir dans Roblox Studio |
+| `src/shared/Config.luau` | **Les réglages** : prix, gains, ordre des objets. C'est ici que tu équilibres le jeu |
+| `src/server/TycoonServer.server.luau` | Le moteur du jeu (garages, machines, argent, sauvegarde) |
+| `default.project.json` | Fichier [Rojo](https://rojo.space) qui sert à reconstruire le `.rbxlx` à partir du code |
+
+## Lancer le jeu sur ton PC (Windows)
+
+1. Installe **Roblox Studio** depuis https://create.roblox.com et connecte-toi avec ton compte Roblox.
+2. Sur GitHub, ouvre `build/GarageTycoon.rbxlx`, puis clique sur le bouton **Download raw file** (l'icône de téléchargement en haut à droite du fichier).
+3. Double-clique sur le fichier téléchargé : il s'ouvre dans Roblox Studio.
+4. Clique sur **Play** (ou appuie sur `F5`). Tu apparais dans ton garage.
+5. Marche sur le bouton vert **Bolt Workbench (FREE)** : la première machine apparaît et l'argent commence à tomber.
+
+> Dans Studio, la sauvegarde ne fonctionne pas tant que le jeu n'est pas publié. C'est normal : un message jaune s'affiche dans la fenêtre Output et le jeu marche quand même.
+
+## Publier le jeu sur Roblox
+
+1. Dans Studio : **File → Publish to Roblox**, puis choisis un nom et une description.
+2. **Home → Game Settings → Security** : active **Enable Studio Access to API Services**, sinon la sauvegarde ne marchera pas pendant tes tests.
+3. **Game Settings → Places** (ou dans le Creator Dashboard) : règle le **nombre maximum de joueurs à 4**, puisqu'il y a 4 garages.
+4. Rends le jeu public quand tu es prêt (Creator Dashboard → ton expérience → Privacy → Public).
+
+## Brancher le Game Pass « Argent x2 »
+
+1. Va sur https://create.roblox.com/dashboard/creations, ouvre ton expérience, puis **Monetization → Passes → Create a Pass**.
+2. Ajoute une image et un nom (par exemple « 2x Cash »), puis enregistre.
+3. Ouvre le pass, va dans **Sales**, active **Item for Sale** et fixe un prix (pour ce type de pass, on voit souvent entre 99 et 199 Robux).
+4. Copie l'**ID** du pass (le nombre dans l'URL).
+5. Dans Studio, ouvre `ReplicatedStorage → Config` et remplace `Config.CashX2GamePassId = 0` par ton ID.
+6. Republie le jeu. Un bouton doré « 2x CASH » apparaît dans chaque garage.
+
+Sur chaque vente, Roblox te reverse environ 70 % des Robux. Pour convertir tes Robux en euros (programme DevEx), il faut au minimum 30 000 Robux gagnés et un compte vérifié. Vérifie les conditions et le taux actuels sur la page officielle DevEx.
+
+## Modifier le jeu
+
+- **Changer un prix ou un gain** : modifie `Config.luau`, rien d'autre à toucher.
+- **Ajouter une machine** : copie un bloc `dropper` dans `Config.Items`, donne-lui un nouvel `id`, choisis un `z` libre sur le tapis (entre 24 et -18) et une position de `button` libre.
+- Si tu modifies les fichiers dans `src/`, reconstruis le jeu avec Rojo : `rojo build default.project.json -o build/GarageTycoon.rbxlx`.
+
+## Idées pour la suite
+
+- Un système de **rebirth** : on repart de zéro avec un multiplicateur permanent (ça augmente beaucoup le temps de jeu).
+- Une interface d'argent plus jolie, avec un « +$ » animé à chaque vente.
+- Plus de voitures (BMW, Mercedes… en style générique, sans les logos des marques).
+- Des **Developer Products** : des achats répétables, comme un pack d'argent.

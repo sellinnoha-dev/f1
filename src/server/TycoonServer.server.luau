@@ -74,23 +74,39 @@ local function at(plot, x, y, z)
 end
 
 -- Texte flottant au-dessus d'une pièce
-local function createBillboard(part, text, offsetY, maxDistance)
+-- Texte flottant au-dessus d'une pièce : un titre blanc et, en option, une ligne dorée.
+-- La taille est en studs : le texte rapetisse avec la distance, comme un vrai panneau,
+-- donc les textes lointains ne se chevauchent plus.
+local function createBillboard(part, title, subtitle, offsetY, width)
+	width = width or 7
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.new(0, 200, 0, 60)
+	gui.Size = UDim2.new(width, 0, subtitle and 2.6 or 1.4, 0)
 	gui.StudsOffset = Vector3.new(0, offsetY, 0)
-	gui.MaxDistance = maxDistance or 60
+	gui.MaxDistance = 80
+	gui.LightInfluence = 0
 	gui.Parent = part
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBold
-	label.TextScaled = true
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0
-	label.Text = text
-	label.Parent = gui
-	return label
+	local function addLabel(text, posY, height, color)
+		local label = Instance.new("TextLabel")
+		label.Position = UDim2.fromScale(0, posY)
+		label.Size = UDim2.fromScale(1, height)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.GothamBold
+		label.TextScaled = true
+		label.TextColor3 = color
+		label.TextStrokeTransparency = 0
+		label.Text = text
+		label.Parent = gui
+		return label
+	end
+
+	if subtitle then
+		addLabel(title, 0, 0.5, Color3.new(1, 1, 1))
+		addLabel(subtitle, 0.52, 0.48, COLOR_GOLD)
+	else
+		addLabel(title, 0, 1, Color3.new(1, 1, 1))
+	end
+	return gui
 end
 
 local function getCash(player)
@@ -102,13 +118,28 @@ end
 -- Les pièces qui roulent sur le tapis
 -- ============================================================
 
+-- Forme des pièces auto qui sortent des machines (voir "drop" dans Config)
+local DROP_SHAPES = {
+	bolt = { size = Vector3.new(1.4, 0.7, 0.7), shape = Enum.PartType.Cylinder, material = Enum.Material.Metal },
+	tire = { size = Vector3.new(0.9, 2, 2), shape = Enum.PartType.Cylinder, material = Enum.Material.Rubber, flat = true },
+	engine = { size = Vector3.new(1.8, 1.4, 1.6), shape = Enum.PartType.Block, material = Enum.Material.Metal },
+	panel = { size = Vector3.new(2.2, 0.5, 1.6), shape = Enum.PartType.Block, material = Enum.Material.SmoothPlastic },
+	rim = { size = Vector3.new(0.6, 2, 2), shape = Enum.PartType.Cylinder, material = Enum.Material.Foil, flat = true },
+}
+
 local function spawnDrop(plot, item)
+	local look = DROP_SHAPES[item.drop] or DROP_SHAPES.bolt
 	local drop = Instance.new("Part")
 	drop.Name = "Drop"
-	drop.Size = Vector3.new(1, 1, 1)
+	drop.Shape = look.shape
+	drop.Size = look.size
 	drop.Color = item.color
-	drop.Material = Enum.Material.SmoothPlastic
+	drop.Material = look.material
 	drop.CFrame = at(plot, -25, 5, item.z)
+	if look.flat then
+		-- Pneus et jantes posés à plat sur le tapis
+		drop.CFrame *= CFrame.Angles(0, 0, math.rad(90))
+	end
 	drop:SetAttribute("Value", item.value)
 	drop:SetAttribute("Plot", plot.index)
 	drop.Parent = plot.drops
@@ -147,7 +178,7 @@ local function buildDropper(plot, item, model)
 		Name = "Head", Size = Vector3.new(6, 3, 4), CFrame = at(plot, -25.5, 7.5, item.z),
 		Color = item.color, Material = Enum.Material.Metal,
 	})
-	createBillboard(head, item.name .. "\n+$" .. formatMoney(item.value), 3, 40)
+	createBillboard(head, item.name, "+$" .. formatMoney(item.value), 3.2, 6)
 
 	-- Boucle de production : s'arrête toute seule quand la machine est détruite
 	task.spawn(function()
@@ -176,7 +207,7 @@ local function buildUpgrader(plot, item, model)
 		Name = "Gate", Size = Vector3.new(5, 4, 0.4), CFrame = at(plot, -25, 2.5, item.z),
 		Color = item.color, Material = Enum.Material.Neon, Transparency = 0.5, CanCollide = false,
 	})
-	createBillboard(gate, item.name, 4, 40)
+	createBillboard(gate, item.name, nil, 3.6, 6)
 
 	local tag = "Upgraded_" .. item.id
 	gate.Touched:Connect(function(hit)
@@ -323,7 +354,7 @@ local function createButton(plot, item)
 		CFrame = at(plot, pos.X, 0.3, pos.Z), Color = COLOR_BUTTON, Material = Enum.Material.Neon,
 	})
 	local priceText = item.price == 0 and "FREE" or ("$" .. formatMoney(item.price))
-	createBillboard(button, item.name .. "\n" .. priceText, 3, 50)
+	createBillboard(button, item.name, priceText, 3, 7)
 	button.Touched:Connect(function(hit)
 		tryBuy(plot, item, button, hit)
 	end)
@@ -358,7 +389,7 @@ local function createGamePassPad(plot)
 		Name = "GamePassPad", Size = Vector3.new(5, 0.6, 5), CFrame = at(plot, 6, 0.3, -14),
 		Color = COLOR_GOLD, Material = Enum.Material.Neon,
 	})
-	createBillboard(pad, "2x CASH\n(Game Pass)", 3, 50)
+	createBillboard(pad, "2x CASH", "Game Pass", 3, 7)
 
 	local cooldown = false
 	pad.Touched:Connect(function(hit)
@@ -427,7 +458,7 @@ local function createPlot(index)
 		Name = "Collector", Size = Vector3.new(6, 3, 4), CFrame = at(plot, -25, 1.5, -30),
 		Color = Color3.fromRGB(0, 255, 120), Material = Enum.Material.Neon,
 	})
-	createBillboard(collector, "SELL", 3, 40)
+	createBillboard(collector, "SELL", nil, 3, 5)
 	collector.Touched:Connect(function(hit)
 		onCollect(plot, hit)
 	end)

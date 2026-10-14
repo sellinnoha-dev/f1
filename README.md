@@ -31,13 +31,19 @@ Un jeu Roblox de type **tycoon** : chaque joueur a son garage, des machines fabr
 
 > Dans Studio, la sauvegarde ne fonctionne pas tant que le jeu n'est pas publié. C'est normal : un message jaune s'affiche dans la fenêtre Output et le jeu marche quand même.
 
-## Travailler sans retélécharger à chaque fois (synchro automatique)
+## Mettre à jour le jeu (sans Rojo)
 
-1. Télécharge **`GarageTycoon.bat`** (sur la page du fichier GitHub, appuie sur **Ctrl + S**) et mets-le sur ton Bureau.
-2. Double-clique dessus. Si Windows affiche « Windows a protégé votre ordinateur », clique sur **Informations complémentaires → Exécuter quand même**.
-   La première fois, il installe Rojo et son plugin dans Studio (relance Studio s'il était ouvert).
-3. Dans Studio, ouvre le fichier indiqué dans la fenêtre noire (`C:\Users\<toi>\GarageTycoon\project\build\GarageTycoon.rbxlx`), puis **Plugins → Rojo → Connect**.
-4. Laisse la fenêtre noire ouverte : toutes les minutes, elle vérifie s'il y a une nouvelle version sur GitHub et l'envoie toute seule dans Studio. Il ne reste qu'à appuyer sur **F5**.
+1. Ouvre ton jeu dans Studio, **jeu arrêté** (pas en mode Play).
+2. Clique dans la barre en bas de Studio « Exécuter une commande… » (si elle n'est pas là : **Fenêtre → Barre de commande**).
+3. Colle cette ligne puis appuie sur **Entrée** :
+
+```lua
+local H = game:GetService("HttpService") H.HttpEnabled = true loadstring(H:GetAsync("https://raw.githubusercontent.com/sellinnoha-dev/f1/main/tools/StudioUpdate.luau?v=" .. os.time(), true))()
+```
+
+4. La Sortie affiche « Mise à jour terminée : 4/4 ». Fais **Ctrl + S** puis **F5**.
+
+Astuce : la prochaine fois, clique dans la barre de commande et appuie sur **flèche du haut** pour retrouver la ligne.
 
 ## Utiliser de vrais modèles de la Boîte à outils
 

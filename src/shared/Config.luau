@@ -83,10 +83,10 @@ Config.Items = {
 		button = Vector3.new(16, 0, 16),
 	},
 	{
-		id = "car1", name = "Showroom: Sport Coupe", kind = "car", style = "coupe", model = "SportCar",
+		id = "car1", name = "Showroom: Sport Car", kind = "car", style = "coupe", model = "SportCar",
 		price = 3000, requires = "dropper4",
 		color = Color3.fromRGB(20, 60, 160),
-		position = Vector3.new(24, 0, -10),
+		position = Vector3.new(28, 0, 26),
 		button = Vector3.new(0, 0, 8),
 	},
 	{
@@ -104,11 +104,32 @@ Config.Items = {
 		button = Vector3.new(16, 0, 8),
 	},
 	{
-		id = "car2", name = "Showroom: Supercar", kind = "car", style = "super", model = "Supercar",
-		price = 60000, requires = "polish",
-		color = Color3.fromRGB(230, 30, 30),
-		position = Vector3.new(24, 0, -27),
+		id = "car2", name = "Showroom: Sport Car 2", kind = "car", style = "coupe", model = "SportCar2",
+		price = 12000, requires = "dropper5",
+		color = Color3.fromRGB(240, 240, 240),
+		position = Vector3.new(28, 0, 12),
 		button = Vector3.new(0, 0, 0),
+	},
+	{
+		id = "car3", name = "Showroom: Sport Car 3", kind = "car", style = "coupe", model = "SportCar3",
+		price = 30000, requires = "polish",
+		color = Color3.fromRGB(20, 20, 25),
+		position = Vector3.new(28, 0, -2),
+		button = Vector3.new(8, 0, 0),
+	},
+	{
+		id = "car4", name = "Showroom: Supercar", kind = "car", style = "super", model = "Supercar",
+		price = 60000, requires = "car3",
+		color = Color3.fromRGB(230, 30, 30),
+		position = Vector3.new(28, 0, -16),
+		button = Vector3.new(16, 0, 0),
+	},
+	{
+		id = "car5", name = "Showroom: Hypercar", kind = "car", style = "super", model = "Supercar2",
+		price = 120000, requires = "car4",
+		color = Color3.fromRGB(255, 190, 0),
+		position = Vector3.new(28, 0, -30),
+		button = Vector3.new(0, 0, -8),
 	},
 }
 

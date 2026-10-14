@@ -52,8 +52,11 @@ Le jeu peut remplacer ses formes simples par des modèles choisis dans la Boîte
 | `Engine` | pièce de l'Engine Bench |
 | `Panel` | pièce de la Body Shop Line |
 | `Rim` | pièce de la Rim Factory |
-| `SportCar` | voiture du premier podium |
-| `Supercar` | voiture du second podium |
+| `SportCar` | voiture du 1er podium |
+| `SportCar2` | voiture du 2e podium |
+| `SportCar3` | voiture du 3e podium |
+| `Supercar` | voiture du 4e podium |
+| `Supercar2` | voiture du 5e podium |
 
 Le jeu les met à la bonne taille et supprime les scripts qu'ils contiennent. Il manque un modèle ? La forme simple est utilisée à la place.
 Enregistre ton jeu (**Fichier → Enregistrer sous**) en dehors du dossier `project`, par exemple `C:\Users\<toi>\GarageTycoon\MonGarage.rbxlx`.

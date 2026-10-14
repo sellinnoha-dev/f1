@@ -385,7 +385,7 @@ end
 local function buildCar(plot, item, model)
 	local p = item.position
 	makePart(model, {
-		Name = "Podium", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 16, 16),
+		Name = "Podium", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 12, 12),
 		CFrame = at(plot, p.X, 0.5, p.Z) * CFrame.Angles(0, 0, math.rad(90)),
 		Color = COLOR_DARK, Material = Enum.Material.Marble,
 	})

@@ -380,7 +380,7 @@ local DROP_SHAPES = {
 
 -- Crée une pièce à partir d'un modèle de la Boîte à outils, soudé en un seul bloc
 local function makeDropFromAsset(asset, look)
-	local clone = cloneAsset(asset, math.max(look.size.X, look.size.Y, look.size.Z) * 1.1)
+	local clone = cloneAsset(asset, math.max(look.size.X, look.size.Y, look.size.Z) * 1.4)
 	if not clone then
 		return nil, nil
 	end

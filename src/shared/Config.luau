@@ -9,6 +9,10 @@ local Config = {}
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
 
+-- Mode test : argent de départ quand tu joues dans Roblox Studio (F5).
+-- N'a AUCUN effet dans le vrai jeu publié. Mets 0 pour tester la vraie progression.
+Config.StudioTestCash = 250000
+
 -- Nombre de garages sur la carte (= nombre max de joueurs par serveur)
 Config.PlotCount = 4
 -- Distance entre le centre de la carte et chaque garage (en studs)

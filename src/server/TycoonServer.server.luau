@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
@@ -130,11 +131,11 @@ local function getAsset(name)
 	return name and folder and folder:FindFirstChild(name)
 end
 
--- Copie un modèle sans ses scripts (sécurité) et le met à la bonne taille
+-- Copie un modèle sans ses scripts (sécurité) ni ses sons, et le met à la bonne taille
 local function cloneAsset(asset, targetSize)
 	local clone = asset:Clone()
 	for _, descendant in ipairs(clone:GetDescendants()) do
-		if descendant:IsA("LuaSourceContainer") then
+		if descendant:IsA("LuaSourceContainer") or descendant:IsA("Sound") then
 			descendant:Destroy()
 		end
 	end
@@ -711,7 +712,11 @@ end
 -- ============================================================
 
 local function loadData(player)
-	local data = { owned = {}, cash = Config.StartingCash, loaded = true }
+	local startingCash = Config.StartingCash
+	if RunService:IsStudio() and Config.StudioTestCash > 0 then
+		startingCash = Config.StudioTestCash -- mode test : uniquement dans Studio
+	end
+	local data = { owned = {}, cash = startingCash, loaded = true }
 	if not dataStore then
 		return data
 	end

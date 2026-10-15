@@ -27,13 +27,13 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "11 - choix et 8 garages"
+Config.Version = "12 - commandes de test"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
 
 -- Mode test : argent de départ quand tu joues dans Roblox Studio (F5).
--- N'a AUCUN effet dans le vrai jeu publié. Mets 0 pour tester la vraie progression.
+-- N'a AUCUN effet dans le vrai jeu publié. Plus simple : tape "/cash 250000" dans le chat pendant le test.
 Config.StudioTestCash = 0
 
 -- Nombre de garages sur la carte (= nombre max de joueurs par serveur)
@@ -301,7 +301,13 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
+-- Le script serveur et Config doivent venir de la même mise à jour
+local EXPECTED_CONFIG_VERSION = "12 - commandes de test"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
+if Config.Version ~= EXPECTED_CONFIG_VERSION then
+	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
+		.. EXPECTED_CONFIG_VERSION .. "). Ferme l'onglet Config s'il est ouvert, puis relance la mise à jour.")
+end
 
 -- On fait apparaître les persos nous-mêmes, directement dans leur garage
 Players.CharacterAutoLoads = false
@@ -428,9 +434,20 @@ local function notify(owner, text)
 end
 
 -- Niveau du garage selon le nombre de rebirths (Standard, Bronze, Argent...)
+-- Niveau de secours si Config est une ancienne version (évite de bloquer le jeu)
+local FALLBACK_TIERS = {
+	{
+		name = "STANDARD", lamps = 0,
+		floorColor = Color3.fromRGB(70, 70, 75), floorMaterial = Enum.Material.Concrete,
+		wallColor = Color3.fromRGB(200, 200, 205), wallMaterial = Enum.Material.Brick,
+		trimColor = Color3.fromRGB(255, 200, 0),
+	},
+}
+
 local function getTier(owner)
-	local index = math.min((owner and getRebirths(owner) or 0) + 1, #Config.GarageTiers)
-	return Config.GarageTiers[index], index
+	local tiers = Config.GarageTiers or FALLBACK_TIERS
+	local index = math.min((owner and getRebirths(owner) or 0) + 1, #tiers)
+	return tiers[index], index
 end
 
 -- Somme d'un bonus donné par les "perks" possédés (ex : carIncomeBonus, marketBonus)
@@ -2165,6 +2182,46 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passI
 		end
 	end
 end)
+
+-- ============================================================
+-- Commandes de test dans le chat (uniquement dans Studio) :
+--   /cash 250000  -> te donne de l'argent
+--   /rebirths 3   -> règle ton nombre de rebirths (pour voir les niveaux du garage)
+-- ============================================================
+
+local function onTestCommand(player, message)
+	if not RunService:IsStudio() then
+		return
+	end
+	local command, amount = message:match("^/(%a+)%s+(%d+)$")
+	amount = tonumber(amount)
+	if not command or not amount then
+		return
+	end
+	local stats = player:FindFirstChild("leaderstats")
+	if command == "cash" and stats then
+		stats.Cash.Value = amount
+		notify(player, "Test: cash set to $" .. formatMoney(amount))
+	elseif command == "rebirths" and stats then
+		stats.Rebirths.Value = amount
+		local data = playerData[player]
+		if data and data.plot then
+			applyTheme(data.plot)
+		end
+		notify(player, "Test: " .. amount .. " rebirths, garage level " .. getTier(player).name)
+	end
+end
+
+Players.PlayerAdded:Connect(function(player)
+	player.Chatted:Connect(function(message)
+		onTestCommand(player, message)
+	end)
+end)
+for _, player in ipairs(Players:GetPlayers()) do
+	player.Chatted:Connect(function(message)
+		onTestCommand(player, message)
+	end)
+end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)

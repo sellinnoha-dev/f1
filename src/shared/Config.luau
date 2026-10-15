@@ -7,13 +7,13 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "11 - choix et 8 garages"
+Config.Version = "12 - commandes de test"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
 
 -- Mode test : argent de départ quand tu joues dans Roblox Studio (F5).
--- N'a AUCUN effet dans le vrai jeu publié. Mets 0 pour tester la vraie progression.
+-- N'a AUCUN effet dans le vrai jeu publié. Plus simple : tape "/cash 250000" dans le chat pendant le test.
 Config.StudioTestCash = 0
 
 -- Nombre de garages sur la carte (= nombre max de joueurs par serveur)

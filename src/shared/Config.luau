@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "10 - ville et bots intelligents"
+Config.Version = "11 - choix et 8 garages"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -17,9 +17,9 @@ Config.StartingCash = 0
 Config.StudioTestCash = 0
 
 -- Nombre de garages sur la carte (= nombre max de joueurs par serveur)
-Config.PlotCount = 4
+Config.PlotCount = 8
 -- Distance entre le centre de la carte et chaque garage (en studs)
-Config.PlotDistance = 100
+Config.PlotDistance = 170
 
 -- Rebirth : quand tout est acheté, le joueur peut recommencer à zéro contre un bonus permanent
 Config.RebirthCost = 150000 -- prix du 1er rebirth (x2 pour le 2e, x3 pour le 3e...)
@@ -64,7 +64,7 @@ Config.GarageTiers = {
 -- Bots : faux joueurs qui jouent tout seuls dans les garages libres
 Config.BotsEnabled = true
 Config.BotsOnlyInStudio = true -- true = seulement quand tu testes dans Studio
-Config.BotCount = 2
+Config.BotCount = 3
 Config.BotTradeCooldown = 120 -- secondes minimum entre deux ventes d'un même bot
 -- Personnalités : smartness = chance de faire le meilleur choix,
 -- patience = secondes qu'il accepte d'attendre pour économiser, trading = envie de vendre au marché
@@ -81,7 +81,7 @@ Config.MarketBuyerPrice = 0.8 -- l'acheteur paie 80 % du prix boutique (une bonn
 Config.MarketSellerBonus = 1.5 -- le vendeur touche 150 % du prix boutique
 
 -- Nombre max de pièces sur un tapis en même temps (limite le lag)
-Config.MaxDropsPerPlot = 30
+Config.MaxDropsPerPlot = 20
 
 -- Vitesse du tapis roulant (studs par seconde)
 Config.ConveyorSpeed = 8
@@ -101,7 +101,8 @@ Config.GamePassPad = Vector3.new(-10, 0, 30)
 -- ============================================================
 -- Liste des objets à acheter, dans l'ordre de progression.
 --   kind     : "dropper" (fabrique des pièces), "upgrader" (multiplie la valeur),
---              "walls" (décor), "car" (voiture de showroom), "floor" (étage VIP)
+--              "walls" (décor), "car" (voiture de showroom), "floor" (étage VIP),
+--              "perk" (bureau qui donne un bonus permanent)
 --   requires : l'objet à posséder avant que le bouton apparaisse
 --   value    : argent rapporté par pièce (dropper)
 --   interval : secondes entre deux pièces (dropper)
@@ -110,6 +111,8 @@ Config.GamePassPad = Vector3.new(-10, 0, 30)
 --   z        : position le long du tapis roulant (dropper / upgrader)
 --   income   : argent rapporté chaque seconde (voitures du showroom)
 --   position : emplacement du podium (Y = 16 pour l'étage VIP)
+--   choice   : embranchement : les objets avec le même "choice" s'excluent (on n'en prend qu'un)
+--   carIncomeBonus / marketBonus : bonus des "perks" (bureaux)
 --   button   : position du bouton d'achat dans le garage
 -- ============================================================
 Config.Items = {
@@ -134,15 +137,23 @@ Config.Items = {
 		button = Vector3.new(16, 0, 24),
 	},
 	{
-		id = "paint", name = "Paint Booth (x2)", kind = "upgrader",
+		id = "paint", name = "Paint Booth (x2 parts)", kind = "upgrader", choice = "early",
 		price = 150, requires = "dropper2",
 		multiplier = 2, z = -20,
 		color = Color3.fromRGB(255, 60, 60),
 		button = Vector3.new(0, 0, 16),
 	},
 	{
+		-- Choix 1 : doubler les pièces maintenant, OU miser sur les voitures plus tard
+		id = "salesmanager", name = "Sales Manager (+50% car $)", kind = "perk", choice = "early",
+		price = 150, requires = "dropper2", carIncomeBonus = 0.5,
+		color = Color3.fromRGB(60, 140, 255),
+		position = Vector3.new(-35, 0, 30),
+		button = Vector3.new(-8, 0, 16),
+	},
+	{
 		id = "dropper3", name = "Engine Bench", kind = "dropper",
-		price = 400, requires = "paint",
+		price = 400, requires = "dropper2",
 		value = 24, interval = 2, z = 2, drop = "engine", model = "Engine",
 		color = Color3.fromRGB(90, 90, 100),
 		button = Vector3.new(8, 0, 16),
@@ -169,11 +180,19 @@ Config.Items = {
 		button = Vector3.new(8, 0, 8),
 	},
 	{
-		id = "polish", name = "Polish Station (x1.5)", kind = "upgrader",
+		id = "polish", name = "Polish Station (x1.5 parts)", kind = "upgrader", choice = "late",
 		price = 20000, requires = "dropper5",
 		multiplier = 1.5, z = -24,
 		color = Color3.fromRGB(80, 220, 255),
 		button = Vector3.new(16, 0, 8),
+	},
+	{
+		-- Choix 2 : produire plus, OU mieux vendre au marché
+		id = "contacts", name = "Market Contacts (+25% sales)", kind = "perk", choice = "late",
+		price = 20000, requires = "dropper5", marketBonus = 0.25,
+		color = Color3.fromRGB(255, 140, 40),
+		position = Vector3.new(-35, 0, -30),
+		button = Vector3.new(-8, 0, 8),
 	},
 	{
 		id = "car2", name = "Showroom: Sport Car 2", kind = "car", style = "coupe", model = "SportCar2",
@@ -184,7 +203,7 @@ Config.Items = {
 	},
 	{
 		id = "car3", name = "Showroom: Sport Car 3", kind = "car", style = "coupe", model = "SportCar3",
-		price = 30000, requires = "polish",
+		price = 30000, requires = "car2",
 		color = Color3.fromRGB(20, 20, 25),
 		position = Vector3.new(28, 0, -2), income = 120,
 		button = Vector3.new(8, 0, 0),

@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Debris = game:GetService("Debris")
+local PathfindingService = game:GetService("PathfindingService")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
@@ -28,6 +29,7 @@ local COLOR_BUTTON = Color3.fromRGB(0, 200, 90)
 local COLOR_BUTTON_DENIED = Color3.fromRGB(220, 40, 40)
 local COLOR_GOLD = Color3.fromRGB(255, 200, 0)
 local COLOR_REBIRTH = Color3.fromRGB(170, 70, 255)
+local COLOR_CHOICE = Color3.fromRGB(60, 140, 255)
 
 -- Accès rapide à un objet par son id : itemsById["paint"]
 local itemsById = {}
@@ -145,6 +147,30 @@ end
 local function getTier(owner)
 	local index = math.min((owner and getRebirths(owner) or 0) + 1, #Config.GarageTiers)
 	return Config.GarageTiers[index], index
+end
+
+-- Somme d'un bonus donné par les "perks" possédés (ex : carIncomeBonus, marketBonus)
+local function perkBonus(owned, field)
+	local total = 0
+	for _, item in ipairs(Config.Items) do
+		if owned[item.id] and item[field] then
+			total += item[field]
+		end
+	end
+	return total
+end
+
+-- Embranchement : un autre objet du même choix a-t-il déjà été pris ?
+local function choiceTaken(owned, item)
+	if not item.choice then
+		return false
+	end
+	for _, other in ipairs(Config.Items) do
+		if other.choice == item.choice and other.id ~= item.id and owned[other.id] then
+			return true
+		end
+	end
+	return false
 end
 
 -- Multiplicateur total d'argent : Game Pass x2 et bonus de rebirth
@@ -600,7 +626,22 @@ local function buildUpperFloor(plot, item, model)
 	createBillboard(strip, "VIP SHOWROOM", nil, 2, 16)
 end
 
+-- Bureau d'un "perk" (bonus permanent choisi dans un embranchement)
+local function buildPerk(plot, item, model)
+	local p = item.position
+	makePart(model, {
+		Name = "Desk", Size = Vector3.new(6, 3, 3), CFrame = at(plot, p.X, 1.5, p.Z),
+		Color = Color3.fromRGB(90, 60, 40), Material = Enum.Material.Wood,
+	})
+	local screen = makePart(model, {
+		Name = "Screen", Size = Vector3.new(3, 2, 0.3), CFrame = at(plot, p.X, 4, p.Z),
+		Color = item.color, Material = Enum.Material.Neon,
+	})
+	createBillboard(screen, item.name, "ACTIVE", 3, 9)
+end
+
 local builders = {
+	perk = buildPerk,
 	dropper = buildDropper,
 	upgrader = buildUpgrader,
 	walls = buildWalls,
@@ -669,12 +710,17 @@ end
 
 local function createButton(plot, item)
 	local pos = item.button
+	-- Les boutons d'un embranchement sont bleus : on ne peut en prendre qu'un
 	local button = makePart(plot.model, {
 		Name = "Button_" .. item.id, Size = Vector3.new(4, 0.6, 4),
-		CFrame = at(plot, pos.X, 0.3, pos.Z), Color = COLOR_BUTTON, Material = Enum.Material.Neon,
+		CFrame = at(plot, pos.X, 0.3, pos.Z), Color = item.choice and COLOR_CHOICE or COLOR_BUTTON,
+		Material = Enum.Material.Neon,
 	})
 	local priceText = item.price == 0 and "FREE" or ("$" .. formatMoney(item.price))
-	createBillboard(button, item.name, priceText, 3, 7)
+	if item.choice then
+		priceText = priceText .. " · CHOOSE ONE"
+	end
+	createBillboard(button, item.name, priceText, 3, 8)
 	button.Touched:Connect(function(hit)
 		tryBuy(plot, item, button, hit)
 	end)
@@ -758,7 +804,8 @@ function refreshButtons(plot)
 		return
 	end
 	for _, item in ipairs(Config.Items) do
-		local visible = not data.owned[item.id] and (item.requires == nil or data.owned[item.requires])
+		local visible = not data.owned[item.id] and not choiceTaken(data.owned, item)
+			and (item.requires == nil or data.owned[item.requires])
 		local button = plot.buttons[item.id]
 		if visible and not button then
 			plot.buttons[item.id] = createButton(plot, item)
@@ -771,7 +818,7 @@ function refreshButtons(plot)
 	-- Le bouton de rebirth apparaît quand tout est acheté
 	local allOwned = true
 	for _, item in ipairs(Config.Items) do
-		if not data.owned[item.id] then
+		if not data.owned[item.id] and not choiceTaken(data.owned, item) then
 			allOwned = false
 			break
 		end
@@ -897,11 +944,13 @@ local function createPlot(index)
 	plot.signLabel = label
 
 	-- Route entre le centre de la carte et l'entrée du garage
+	local roadEnd = Config.PlotDistance - 30 -- s'arrête au bord du marché
+	local roadLength = roadEnd - 40
 	makePart(model, {
-		Name = "Road", Size = Vector3.new(16, 0.2, 48), CFrame = at(plot, 0, -0.9, 64),
+		Name = "Road", Size = Vector3.new(16, 0.2, roadLength), CFrame = at(plot, 0, -0.9, 40 + roadLength / 2),
 		Color = Color3.fromRGB(45, 45, 50), Material = Enum.Material.Asphalt,
 	})
-	for z = 44, 84, 8 do
+	for z = 44, roadEnd - 4, 8 do
 		makePart(model, {
 			Name = "RoadLine", Size = Vector3.new(0.6, 0.2, 3), CFrame = at(plot, 0, -0.78, z),
 			Color = Color3.new(1, 1, 1), Material = Enum.Material.SmoothPlastic,
@@ -1029,7 +1078,8 @@ local function buyCar(slot, buyer)
 
 	local sellerCash = playerData[seller] and getCash(seller)
 	if sellerCash then
-		local earned = math.floor(item.price * Config.MarketSellerBonus)
+		local sellerData = playerData[seller]
+		local earned = math.floor(item.price * (Config.MarketSellerBonus + perkBonus(sellerData.owned, "marketBonus")))
 		sellerCash.Value += earned
 		notify(seller, displayName(buyer) .. " bought your " .. item.name .. "! +$" .. formatMoney(earned))
 	end
@@ -1223,7 +1273,7 @@ local function buildTown()
 	end
 
 	-- Route circulaire
-	local roadRadius, segments = 165, 48
+	local roadRadius, segments = Config.PlotDistance + 65, 64
 	for i = 1, segments do
 		local angle = (i / segments) * 2 * math.pi
 		local position = Vector3.new(math.cos(angle) * roadRadius, 0.1, math.sin(angle) * roadRadius)
@@ -1240,10 +1290,10 @@ local function buildTown()
 		Color3.fromRGB(200, 190, 175), Color3.fromRGB(150, 160, 175), Color3.fromRGB(180, 120, 100),
 		Color3.fromRGB(110, 115, 125), Color3.fromRGB(225, 220, 210),
 	}
-	local count = 30
+	local count = 40
 	for i = 1, count do
 		local angle = (i / count) * 2 * math.pi + rng:NextNumber(-0.05, 0.05)
-		local distance = rng:NextNumber(190, 228)
+		local distance = rng:NextNumber(roadRadius + 25, roadRadius + 60)
 		local width, depth, height = rng:NextNumber(18, 28), rng:NextNumber(16, 24), rng:NextNumber(22, 75)
 		local ground = Vector3.new(math.cos(angle) * distance, 0, math.sin(angle) * distance)
 		local facing = CFrame.lookAt(ground, Vector3.zero)
@@ -1267,7 +1317,7 @@ local function buildTown()
 	-- Arbres le long de la route
 	for i = 1, 24 do
 		local angle = (i / 24) * 2 * math.pi + math.pi / 24
-		local position = Vector3.new(math.cos(angle) * 177, 0, math.sin(angle) * 177)
+		local position = Vector3.new(math.cos(angle) * (roadRadius + 12), 0, math.sin(angle) * (roadRadius + 12))
 		townPart({
 			Name = "Trunk", Size = Vector3.new(1.2, 6, 1.2), CFrame = CFrame.new(position + Vector3.new(0, 3, 0)),
 			Color = Color3.fromRGB(100, 70, 45), Material = Enum.Material.Wood,
@@ -1278,6 +1328,13 @@ local function buildTown()
 			Color = Color3.fromRGB(50, 130, 60), Material = Enum.Material.Grass,
 		})
 	end
+end
+
+-- Le sol doit être assez grand pour les garages et la ville
+local baseplate = workspace:FindFirstChild("Baseplate")
+if baseplate and baseplate:IsA("BasePart") then
+	local size = (Config.PlotDistance + 165) * 2
+	baseplate.Size = Vector3.new(size, baseplate.Size.Y, size)
 end
 
 buildTown()
@@ -1514,21 +1571,48 @@ local function createBotCharacter(bot, plot)
 end
 
 -- Le bot marche vers un point (abandonne au bout de quelques secondes s'il est bloqué)
-local function botWalkTo(state, position)
-	local humanoid = state.character and state.character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then
-		return
-	end
+-- Le bot marche vers un point en contournant les obstacles (tapis, murs, machines)
+local function moveAndWait(humanoid, position, timeout)
 	local arrived = false
 	local connection = humanoid.MoveToFinished:Connect(function()
 		arrived = true
 	end)
 	humanoid:MoveTo(position)
 	local elapsed = 0
-	while not arrived and elapsed < 6 do
-		elapsed += task.wait(0.2)
+	while not arrived and elapsed < timeout do
+		elapsed += task.wait(0.1)
 	end
 	connection:Disconnect()
+	return arrived
+end
+
+local function botWalkTo(state, position)
+	local character = state.character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not root then
+		return
+	end
+	local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true })
+	local ok = pcall(function()
+		path:ComputeAsync(root.Position, position)
+	end)
+	if not ok or path.Status ~= Enum.PathStatus.Success then
+		moveAndWait(humanoid, position, 6) -- pas de chemin trouvé : tout droit
+		return
+	end
+	for _, waypoint in ipairs(path:GetWaypoints()) do
+		if not humanoid.Parent then
+			return
+		end
+		if waypoint.Action == Enum.PathWaypointAction.Jump then
+			humanoid.Jump = true
+		end
+		if not moveAndWait(humanoid, waypoint.Position, 2) then
+			moveAndWait(humanoid, position, 4) -- bloqué : on tente tout droit
+			return
+		end
+	end
 end
 
 -- Bulle de pensée au-dessus de la tête du bot
@@ -1575,6 +1659,7 @@ local function estimateIncome(owner, owned)
 			end
 		end
 	end
+	carIncome *= 1 + perkBonus(owned, "carIncomeBonus")
 	return (dropperIncome * upgrade + carIncome) * getMultiplier(owner)
 end
 
@@ -1826,6 +1911,7 @@ task.spawn(function()
 						income += item.income
 					end
 				end
+				income *= 1 + perkBonus(data.owned, "carIncomeBonus")
 				if income > 0 then
 					cash.Value += math.floor(income * getMultiplier(owner) + 0.5)
 				end

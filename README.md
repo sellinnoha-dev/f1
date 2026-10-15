@@ -59,6 +59,18 @@ Astuce : la prochaine fois, clique dans la barre de commande et appuie sur **fl�
 - Des **bots** prennent les garages libres et jouent tout seuls (achats, rebirths, marché).
   Par défaut ils n'apparaissent que dans Studio (`Config.BotsOnlyInStudio`). Un vrai joueur qui arrive prend la place d'un bot.
 
+## Embranchements (choix)
+
+Les boutons **bleus** sont des choix : on n'en prend qu'un par embranchement (jusqu'au prochain rebirth).
+- **Choix 1** : Paint Booth (x2 sur les pièces, fort au début) **ou** Sales Manager (+50 % sur les voitures, fort à la fin).
+- **Choix 2** : Polish Station (x1.5 sur les pièces) **ou** Market Contacts (+25 % sur les ventes au marché).
+
+## Jouer entre amis ou en public
+
+Pas besoin de code : sur le Creator Dashboard, ouvre ton expérience → **Monetization → Private Servers** et active-les
+(gratuits, ou payants en Robux par mois). Les joueurs peuvent alors créer un serveur privé et y inviter leurs amis ;
+les autres jouent en public. Pense aussi à régler le **nombre max de joueurs à 8** (il y a 8 garages).
+
 ## Utiliser de vrais modèles de la Boîte à outils
 
 Le jeu peut remplacer ses formes simples par des modèles choisis dans la Boîte à outils de Studio.

@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "16 - logos retires"
+Config.Version = "17 - voitures automatiques"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -140,6 +140,44 @@ Config.Cars = {
 		price = 1500000, income = 5000, color = Color3.fromRGB(10, 10, 15) },
 	{ id = "neon", name = "Neon Ghost", rarity = "extreme", model = "Extreme2", style = "super",
 		price = 2500000, income = 8000, color = Color3.fromRGB(0, 255, 220) },
+}
+
+-- ============================================================
+-- VOITURES AUTOMATIQUES : toutes les voitures rangées dans ServerStorage > Assets
+-- (sauf les pièces du tapis) reçoivent une rareté selon leur niveau de détail :
+-- les plus détaillées (souvent les plus belles) sont les plus rares.
+-- La liste Config.Cars ci-dessus ne sert alors qu'en secours (aucune voiture dans Assets).
+-- ============================================================
+Config.AutoCars = true
+Config.DropModelNames = { "Bolt", "Tire", "Engine", "Panel", "Rim" } -- pas des voitures
+
+-- Répartition : 30 % Common, 25 % Rare, 20 % Epic, 13 % Legendary, 8 % Mythic, 4 % Extreme
+-- (la voiture la plus détaillée est toujours EXTREME LEGENDARY)
+Config.AutoRarityShares = { 0.30, 0.25, 0.20, 0.13, 0.08, 0.04 }
+
+-- Prix et gain de départ de chaque rareté (dans une même rareté, la plus belle coûte jusqu'à +60 %)
+Config.RarityPricing = {
+	common = { price = 500, income = 4 },
+	rare = { price = 3000, income = 20 },
+	epic = { price = 15000, income = 80 },
+	legendary = { price = 60000, income = 250 },
+	mythic = { price = 250000, income = 900 },
+	extreme = { price = 1500000, income = 5000 },
+}
+
+-- Noms affichés (inventés, sans marque) tirés dans ces listes selon la rareté
+Config.CarNames = {
+	common = { "City Hatch", "Compact Cruiser", "Urban Mini", "Daily Driver", "Family Wagon", "Pocket Coupe" },
+	rare = { "Sport Coupe", "Muscle Car", "Street Racer", "Turbo Hatch", "Drift King", "Road Runner" },
+	epic = { "Track Racer", "Rally Beast", "Night Striker", "Apex GT", "Thunder RS", "Velocity S" },
+	legendary = { "Supercar", "Grand Tourer", "Vortex V12", "Stallion GT", "Falcon R", "Monarch S" },
+	mythic = { "Hypercar", "Concept X", "Aurora Zero", "Titan Hyper", "Eclipse R", "Valkyr" },
+	extreme = { "Phantom Zero", "Neon Ghost", "Omega Prime", "Celestia", "Quantum X", "Inferno" },
+}
+
+-- Corrections à la main : nom du modèle dans Assets -> rareté et/ou nom affiché.
+-- Exemple : ["MaVoiture"] = { rarity = "mythic", name = "Bavaria M5" },
+Config.CarOverrides = {
 }
 
 -- Retire automatiquement les logos des modèles de voitures (autocollants et pièces

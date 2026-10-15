@@ -18,7 +18,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "16 - logos retires"
+local EXPECTED_CONFIG_VERSION = "17 - voitures automatiques"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -38,6 +38,99 @@ local COLOR_REBIRTH = Color3.fromRGB(170, 70, 255)
 local COLOR_CHOICE = Color3.fromRGB(60, 140, 255)
 
 -- Accès rapide à un objet par son id : itemsById["paint"]
+-- ============================================================
+-- Catalogue automatique : toutes les voitures de ServerStorage > Assets,
+-- classées de la moins détaillée (Common) à la plus détaillée (Extreme Legendary)
+-- ============================================================
+local function detailScore(model)
+	local score = 0
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("MeshPart") or part:IsA("UnionOperation") then
+			score += 3 -- formes travaillées
+		elseif part:IsA("BasePart") then
+			score += 1
+		elseif part:IsA("SpecialMesh") or part:IsA("SurfaceAppearance") or part:IsA("Texture") then
+			score += 2
+		end
+	end
+	return score
+end
+
+local function buildAutoCatalog()
+	local folder = ServerStorage:FindFirstChild("Assets")
+	if not Config.AutoCars or not folder or not Config.Rarities then
+		return
+	end
+	local skip = {}
+	for _, name in ipairs(Config.DropModelNames or {}) do
+		skip[name] = true
+	end
+	local models = {}
+	for _, child in ipairs(folder:GetChildren()) do
+		if not skip[child.Name] and (child:IsA("Model") or child:IsA("BasePart")) then
+			table.insert(models, { name = child.Name, score = detailScore(child) })
+		end
+	end
+	if #models < 3 then
+		return -- pas assez de voitures : on garde la liste de secours
+	end
+	table.sort(models, function(a, b)
+		return a.score < b.score
+	end)
+
+	-- Rareté de chaque voiture selon son rang
+	local shares = Config.AutoRarityShares
+	local byRarity = {}
+	for rank, entry in ipairs(models) do
+		local percent = (rank - 0.5) / #models
+		local index, cumulative = #Config.Rarities, 0
+		for i, share in ipairs(shares) do
+			cumulative += share
+			if percent <= cumulative then
+				index = i
+				break
+			end
+		end
+		if rank == #models then
+			index = #Config.Rarities -- la plus détaillée est toujours la rareté maximale
+		end
+		local override = Config.CarOverrides and Config.CarOverrides[entry.name]
+		local rarityId = (override and override.rarity) or Config.Rarities[index].id
+		byRarity[rarityId] = byRarity[rarityId] or {}
+		table.insert(byRarity[rarityId], entry)
+	end
+
+	-- Prix, gain et nom
+	local cars = {}
+	print("[Tycoon] Voitures automatiques (" .. #models .. ") :")
+	for _, rarity in ipairs(Config.Rarities) do
+		local list = byRarity[rarity.id] or {}
+		local pricing = Config.RarityPricing[rarity.id]
+		local names = Config.CarNames[rarity.id] or { rarity.name }
+		for rank, entry in ipairs(list) do
+			local factor = 1 + 0.6 * (rank - 1) / math.max(#list - 1, 1)
+			local override = Config.CarOverrides and Config.CarOverrides[entry.name]
+			local name = (override and override.name) or names[(rank - 1) % #names + 1]
+			if not (override and override.name) and rank > #names then
+				name ..= " " .. string.rep("I", math.floor((rank - 1) / #names) + 1)
+			end
+			local car = {
+				id = "auto_" .. entry.name, name = name, rarity = rarity.id, model = entry.name,
+				style = (rarity.id == "common" or rarity.id == "rare") and "coupe" or "super",
+				price = math.floor(pricing.price * factor / 10) * 10,
+				income = math.floor(pricing.income * factor),
+				color = rarity.color,
+			}
+			table.insert(cars, car)
+			print(string.format("   %-18s %-28s -> %s (detail %d, $%s, +$%s/s)", rarity.name, entry.name, name,
+				entry.score, formatMoney(car.price), formatMoney(car.income)))
+		end
+	end
+	Config.Cars = cars
+end
+
+buildAutoCatalog()
+
 local carsById, raritiesById = {}, {}
 for _, car in ipairs(Config.Cars or {}) do
 	carsById[car.id] = car

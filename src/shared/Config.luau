@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "14 - panneau de test"
+Config.Version = "15 - rarete des voitures"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -99,18 +99,86 @@ Config.CashX2GamePassId = 0
 Config.GamePassPad = Vector3.new(-10, 0, 30)
 
 -- ============================================================
+-- RARETÉS : plus c'est rare, moins ça apparaît sur le tapis (weight = chance)
+-- ============================================================
+Config.Rarities = {
+	{ id = "common", name = "COMMON", color = Color3.fromRGB(200, 200, 200), weight = 50 },
+	{ id = "rare", name = "RARE", color = Color3.fromRGB(70, 150, 255), weight = 25 },
+	{ id = "epic", name = "EPIC", color = Color3.fromRGB(180, 80, 255), weight = 13 },
+	{ id = "legendary", name = "LEGENDARY", color = Color3.fromRGB(255, 190, 0), weight = 7, announce = true },
+	{ id = "mythic", name = "MYTHIC", color = Color3.fromRGB(255, 50, 80), weight = 4, announce = true },
+	{ id = "extreme", name = "EXTREME LEGENDARY", color = Color3.fromRGB(0, 255, 220), weight = 1,
+		announce = true, sparkles = true },
+}
+
+-- ============================================================
+-- VOITURES : 2 par rareté. "model" = nom du modèle dans ServerStorage > Assets
+-- (s'il manque, une voiture simple de la couleur indiquée est utilisée)
+-- ============================================================
+Config.Cars = {
+	{ id = "hatch", name = "City Hatch", rarity = "common", model = "Common1", style = "coupe",
+		price = 500, income = 4, color = Color3.fromRGB(150, 160, 170) },
+	{ id = "compact", name = "Compact Cruiser", rarity = "common", model = "Common2", style = "coupe",
+		price = 800, income = 6, color = Color3.fromRGB(120, 170, 120) },
+	{ id = "coupe", name = "Sport Coupe", rarity = "rare", model = "SportCar", style = "coupe",
+		price = 3000, income = 20, color = Color3.fromRGB(20, 60, 160) },
+	{ id = "muscle", name = "Muscle Car", rarity = "rare", model = "SportCar2", style = "coupe",
+		price = 4500, income = 28, color = Color3.fromRGB(240, 240, 240) },
+	{ id = "track", name = "Track Racer", rarity = "epic", model = "SportCar3", style = "super",
+		price = 15000, income = 80, color = Color3.fromRGB(20, 20, 25) },
+	{ id = "rally", name = "Rally Beast", rarity = "epic", model = "Epic2", style = "super",
+		price = 22000, income = 110, color = Color3.fromRGB(240, 120, 30) },
+	{ id = "supercar", name = "Supercar", rarity = "legendary", model = "Supercar", style = "super",
+		price = 60000, income = 250, color = Color3.fromRGB(230, 30, 30) },
+	{ id = "gt", name = "Grand Tourer", rarity = "legendary", model = "Legendary2", style = "super",
+		price = 80000, income = 330, color = Color3.fromRGB(30, 120, 80) },
+	{ id = "hyper", name = "Hypercar", rarity = "mythic", model = "Supercar2", style = "super",
+		price = 250000, income = 900, color = Color3.fromRGB(255, 190, 0) },
+	{ id = "concept", name = "Concept X", rarity = "mythic", model = "Mythic2", style = "super",
+		price = 350000, income = 1200, color = Color3.fromRGB(240, 240, 255) },
+	{ id = "phantom", name = "Phantom Zero", rarity = "extreme", model = "Extreme1", style = "super",
+		price = 1500000, income = 5000, color = Color3.fromRGB(10, 10, 15) },
+	{ id = "neon", name = "Neon Ghost", rarity = "extreme", model = "Extreme2", style = "super",
+		price = 2500000, income = 8000, color = Color3.fromRGB(0, 255, 220) },
+}
+
+-- Places de parking du garage (requires = objet de la boutique qui la débloque)
+Config.CarSlots = {
+	{ position = Vector3.new(28, 0, 26) },
+	{ position = Vector3.new(28, 0, 12) },
+	{ position = Vector3.new(28, 0, -2) },
+	{ position = Vector3.new(28, 0, -16), requires = "parking" },
+	{ position = Vector3.new(28, 0, -30), requires = "parking" },
+	{ position = Vector3.new(28, 16, 26), requires = "floor2" },
+	{ position = Vector3.new(28, 16, 12), requires = "floor2" },
+	{ position = Vector3.new(28, 16, -2), requires = "floor2" },
+	{ position = Vector3.new(28, 16, -16), requires = "floor2" },
+	{ position = Vector3.new(28, 16, -30), requires = "floor2" },
+}
+
+-- Tapis de livraison (anneau autour du marché) : une nouvelle voiture toutes les X secondes
+Config.DeliveryInterval = 6
+Config.DeliveryLoopTime = 50 -- secondes pour faire le tour (après, la voiture repart)
+Config.DeliveryRadius = 44
+Config.DeliveryMaxCars = 8
+
+-- Vente rapide d'une voiture de son garage (touche F) : % du prix récupéré
+Config.QuickSellRatio = 0.5
+-- Au rebirth, on garde les voitures des X premières places
+Config.RebirthKeepSlots = 3
+
+-- ============================================================
 -- Liste des objets à acheter, dans l'ordre de progression.
 --   kind     : "dropper" (fabrique des pièces), "upgrader" (multiplie la valeur),
---              "walls" (décor), "car" (voiture de showroom), "floor" (étage VIP),
+--              "walls" (décor), "parking" (places en plus), "floor" (étage VIP + 5 places),
 --              "perk" (bureau qui donne un bonus permanent)
+--   (les voitures ne sont plus dans la boutique : elles arrivent sur le tapis de livraison)
 --   requires : l'objet à posséder avant que le bouton apparaisse
 --   value    : argent rapporté par pièce (dropper)
 --   interval : secondes entre deux pièces (dropper)
 --   drop     : forme de la pièce fabriquée : "bolt", "tire", "engine", "panel", "rim"
 --   model    : nom du modèle à utiliser s'il est rangé dans ServerStorage > Assets
 --   z        : position le long du tapis roulant (dropper / upgrader)
---   income   : argent rapporté chaque seconde (voitures du showroom)
---   position : emplacement du podium (Y = 16 pour l'étage VIP)
 --   choice   : embranchement : les objets avec le même "choice" s'excluent (on n'en prend qu'un)
 --   carIncomeBonus / marketBonus : bonus des "perks" (bureaux)
 --   button   : position du bouton d'achat dans le garage
@@ -166,10 +234,10 @@ Config.Items = {
 		button = Vector3.new(16, 0, 16),
 	},
 	{
-		id = "car1", name = "Showroom: Sport Car", kind = "car", style = "coupe", model = "SportCar",
+		-- 2 places de parking en plus au rez-de-chaussée
+		id = "parking", name = "Extra Parking (+2 cars)", kind = "parking",
 		price = 3000, requires = "dropper4",
-		color = Color3.fromRGB(20, 60, 160),
-		position = Vector3.new(28, 0, 26), income = 20,
+		color = Color3.fromRGB(255, 255, 255),
 		button = Vector3.new(0, 0, 8),
 	},
 	{
@@ -195,38 +263,10 @@ Config.Items = {
 		button = Vector3.new(-8, 0, 8),
 	},
 	{
-		id = "car2", name = "Showroom: Sport Car 2", kind = "car", style = "coupe", model = "SportCar2",
-		price = 12000, requires = "dropper5",
-		color = Color3.fromRGB(240, 240, 240),
-		position = Vector3.new(28, 0, 12), income = 60,
-		button = Vector3.new(0, 0, 0),
-	},
-	{
-		id = "car3", name = "Showroom: Sport Car 3", kind = "car", style = "coupe", model = "SportCar3",
-		price = 30000, requires = "car2",
-		color = Color3.fromRGB(20, 20, 25),
-		position = Vector3.new(28, 0, -2), income = 120,
-		button = Vector3.new(8, 0, 0),
-	},
-	{
 		id = "floor2", name = "VIP Upper Floor", kind = "floor",
-		price = 40000, requires = "car3",
+		price = 40000, requires = "parking",
 		color = Color3.fromRGB(170, 220, 255),
 		button = Vector3.new(-8, 0, -8),
-	},
-	{
-		id = "car4", name = "Showroom: Supercar", kind = "car", style = "super", model = "Supercar",
-		price = 60000, requires = "floor2",
-		color = Color3.fromRGB(230, 30, 30),
-		position = Vector3.new(28, 16, -16), income = 250,
-		button = Vector3.new(16, 0, 0),
-	},
-	{
-		id = "car5", name = "Showroom: Hypercar", kind = "car", style = "super", model = "Supercar2",
-		price = 120000, requires = "car4",
-		color = Color3.fromRGB(255, 190, 0),
-		position = Vector3.new(28, 16, -30), income = 600,
-		button = Vector3.new(0, 0, -8),
 	},
 }
 

@@ -18,7 +18,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "14 - panneau de test"
+local EXPECTED_CONFIG_VERSION = "15 - rarete des voitures"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -38,6 +38,14 @@ local COLOR_REBIRTH = Color3.fromRGB(170, 70, 255)
 local COLOR_CHOICE = Color3.fromRGB(60, 140, 255)
 
 -- Accès rapide à un objet par son id : itemsById["paint"]
+local carsById, raritiesById = {}, {}
+for _, car in ipairs(Config.Cars or {}) do
+	carsById[car.id] = car
+end
+for _, rarity in ipairs(Config.Rarities or {}) do
+	raritiesById[rarity.id] = rarity
+end
+
 local itemsById = {}
 for _, item in ipairs(Config.Items) do
 	itemsById[item.id] = item
@@ -90,7 +98,7 @@ end
 -- Texte flottant au-dessus d'une pièce : un titre blanc et, en option, une ligne dorée.
 -- La taille est en studs : le texte rapetisse avec la distance, comme un vrai panneau,
 -- donc les textes lointains ne se chevauchent plus.
-local function createBillboard(part, title, subtitle, offsetY, width)
+local function createBillboard(part, title, subtitle, offsetY, width, titleColor)
 	width = width or 7
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.new(width, 0, subtitle and 2.6 or 1.4, 0)
@@ -114,7 +122,7 @@ local function createBillboard(part, title, subtitle, offsetY, width)
 	end
 
 	if subtitle then
-		addLabel(title, 0, 0.5, Color3.new(1, 1, 1))
+		addLabel(title, 0, 0.5, titleColor or Color3.new(1, 1, 1))
 		addLabel(subtitle, 0.52, 0.48, COLOR_GOLD)
 	else
 		addLabel(title, 0, 1, Color3.new(1, 1, 1))
@@ -442,7 +450,7 @@ end
 -- Prépare une voiture à tourner sur son podium.
 -- La rotation est faite par chaque joueur (script CarSpinner) : le serveur ne déplace rien,
 -- donc pas de lag réseau, même avec des voitures de centaines de pièces.
-local function spinOnPodium(car, base)
+local function spinOnPodium(car, base, noSpin)
 	local parts = getParts(car)
 	if #parts == 0 then
 		return
@@ -472,16 +480,18 @@ local function spinOnPodium(car, base)
 	end
 	root.Anchored = true
 	car.PrimaryPart = root
-	car:SetAttribute("SpinBase", base)
-	CollectionService:AddTag(car, "SpinningCar")
+	if not noSpin then
+		car:SetAttribute("SpinBase", base)
+		CollectionService:AddTag(car, "SpinningCar")
+	end
 end
 
 -- Place une voiture de la Boîte à outils sur le podium. Renvoie false si impossible.
-local function placeAssetCar(item, model, base)
+local function placeAssetCar(item, model, base, noSpin)
 	local asset = getAsset(item.model)
 	local clone = asset and cloneAsset(asset, item.style == "super" and 12 or 11)
 	if not clone then
-		return false
+		return nil
 	end
 	local car = clone
 	if clone:IsA("BasePart") then
@@ -497,14 +507,16 @@ local function placeAssetCar(item, model, base)
 	car.Name = "Car"
 	car.Parent = model
 	car:PivotTo(base)
-	spinOnPodium(car, base)
-	return true
+	spinOnPodium(car, base, noSpin)
+	return car
 end
 
--- Pose une voiture (modèle de la Boîte à outils, sinon voiture simple) sur un podium
-local function placeCar(item, model, base)
-	if placeAssetCar(item, model, base) then
-		return
+-- Pose une voiture (modèle de la Boîte à outils, sinon voiture simple) sur un podium.
+-- noSpin = true : elle ne tourne pas (voitures du tapis de livraison). Renvoie le modèle.
+local function placeCar(item, model, base, noSpin)
+	local assetCar = placeAssetCar(item, model, base, noSpin)
+	if assetCar then
+		return assetCar
 	end
 
 	local car = Instance.new("Model")
@@ -545,7 +557,18 @@ local function placeCar(item, model, base)
 	end
 
 	car.WorldPivot = base
-	spinOnPodium(car, base)
+	spinOnPodium(car, base, noSpin)
+	return car
+end
+
+-- Paillettes sur les voitures des raretés les plus hautes
+local function decorateRarity(car, carDef)
+	local rarity = raritiesById[carDef.rarity]
+	if rarity and rarity.sparkles and car.PrimaryPart then
+		local sparkles = Instance.new("Sparkles")
+		sparkles.SparkleColor = rarity.color
+		sparkles.Parent = car.PrimaryPart
+	end
 end
 
 -- Podium de luxe : socle sombre, anneau lumineux et plateau en marbre blanc.
@@ -570,29 +593,117 @@ end
 
 local listCar -- défini plus bas, dans la partie "Marché"
 
--- Voiture de showroom sur son podium
-local function buildCar(plot, item, model)
-	local p = item.position -- p.Y = hauteur de l'étage (0 = rez-de-chaussée)
-	local podium, top = makePodium(model, at(plot, p.X, p.Y, p.Z), getTier(plot.owner).trimColor)
-	if item.income then
-		createBillboard(podium, item.name, "+$" .. formatMoney(item.income) .. "/s", 7, 9)
+-- ============================================================
+-- Places de parking du garage : chaque voiture possédée y est exposée
+-- ============================================================
+
+local function slotUnlocked(data, slotDef)
+	return slotDef.requires == nil or data.owned[slotDef.requires] == true
+end
+
+-- Première place libre et débloquée (nil si le garage est plein)
+local function freeSlotIndex(data)
+	for index, slotDef in ipairs(Config.CarSlots) do
+		if slotUnlocked(data, slotDef) and not data.cars[index] then
+			return index
+		end
+	end
+	return nil
+end
+
+-- Voiture qui rapporte le moins (pour la remplacer par une meilleure)
+local function worstCarSlot(data)
+	local worstIndex, worstIncome = nil, math.huge
+	for index, carId in pairs(data.cars) do
+		local car = carsById[carId]
+		if car and car.income < worstIncome then
+			worstIndex, worstIncome = index, car.income
+		end
+	end
+	return worstIndex, worstIncome
+end
+
+local quickSell -- défini juste après
+
+-- (Re)construit une place : podium + voiture + touches E (marché) et F (vente rapide)
+local function renderSlot(plot, index)
+	local old = plot.carSlots:FindFirstChild("Slot" .. index)
+	if old then
+		old:Destroy()
+	end
+	local owner = plot.owner
+	local data = owner and playerData[owner]
+	local slotDef = Config.CarSlots[index]
+	if not data or not slotDef or not slotUnlocked(data, slotDef) then
+		return
 	end
 
-	-- Touche E : mettre la voiture en vente au marché
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Sell at Market"
-	prompt.ObjectText = "Get $" .. formatMoney(math.floor(item.price * Config.MarketSellerBonus))
-	prompt.HoldDuration = 1
-	prompt.MaxActivationDistance = 12
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = podium
-	prompt.Triggered:Connect(function(player)
+	local model = Instance.new("Model")
+	model.Name = "Slot" .. index
+	model.Parent = plot.carSlots
+	local p = slotDef.position
+	local podium, top = makePodium(model, at(plot, p.X, p.Y, p.Z), getTier(owner).trimColor)
+	local car = data.cars[index] and carsById[data.cars[index]]
+	if not car then
+		createBillboard(podium, "EMPTY SPOT", "Buy cars on the delivery belt", 7, 10)
+		return
+	end
+
+	local rarity = raritiesById[car.rarity]
+	createBillboard(podium, car.name, rarity.name .. "  ·  +$" .. formatMoney(car.income) .. "/s", 7, 11, rarity.color)
+
+	local sellPrompt = Instance.new("ProximityPrompt")
+	sellPrompt.ActionText = "Sell at Market"
+	sellPrompt.ObjectText = "Get $" .. formatMoney(math.floor(car.price * Config.MarketSellerBonus))
+	sellPrompt.HoldDuration = 1
+	sellPrompt.MaxActivationDistance = 12
+	sellPrompt.RequiresLineOfSight = false
+	sellPrompt.Parent = podium
+	sellPrompt.Triggered:Connect(function(player)
 		if player == plot.owner then
-			listCar(plot, item)
+			listCar(plot, index)
 		end
 	end)
 
-	placeCar(item, model, top)
+	local quickPrompt = Instance.new("ProximityPrompt")
+	quickPrompt.ActionText = "Quick Sell $" .. formatMoney(math.floor(car.price * Config.QuickSellRatio))
+	quickPrompt.ObjectText = car.name
+	quickPrompt.KeyboardKeyCode = Enum.KeyCode.F
+	quickPrompt.HoldDuration = 1.5
+	quickPrompt.MaxActivationDistance = 12
+	quickPrompt.RequiresLineOfSight = false
+	quickPrompt.UIOffset = Vector2.new(0, 70)
+	quickPrompt.Parent = podium
+	quickPrompt.Triggered:Connect(function(player)
+		if player == plot.owner then
+			quickSell(plot, index)
+		end
+	end)
+
+	decorateRarity(placeCar(car, model, top), car)
+end
+
+local function renderSlots(plot)
+	plot.carSlots:ClearAllChildren()
+	for index in ipairs(Config.CarSlots) do
+		renderSlot(plot, index)
+	end
+end
+
+-- Vente rapide : la voiture disparaît, on récupère une partie de son prix
+function quickSell(plot, index)
+	local owner = plot.owner
+	local data = owner and playerData[owner]
+	local cash = owner and getCash(owner)
+	local car = data and data.cars[index] and carsById[data.cars[index]]
+	if not car or not cash then
+		return
+	end
+	data.cars[index] = nil
+	local earned = math.floor(car.price * Config.QuickSellRatio)
+	cash.Value += earned
+	renderSlot(plot, index)
+	notify(owner, "Sold " .. car.name .. " for $" .. formatMoney(earned))
 end
 
 -- Étage VIP : dalle sur la moitié droite du garage, escalier, rambardes et murs
@@ -657,12 +768,22 @@ local function buildPerk(plot, item, model)
 	createBillboard(screen, item.name, "ACTIVE", 3, 9)
 end
 
+-- Places de parking en plus : marquage au sol
+local function buildParking(plot, item, model)
+	for _, z in ipairs({ -16, -30 }) do
+		makePart(model, {
+			Name = "ParkingLine", Size = Vector3.new(14, 0.1, 0.4), CFrame = at(plot, 28, 0.05, z + 7),
+			Color = Color3.new(1, 1, 1), Material = Enum.Material.SmoothPlastic,
+		})
+	end
+end
+
 local builders = {
 	perk = buildPerk,
+	parking = buildParking,
 	dropper = buildDropper,
 	upgrader = buildUpgrader,
 	walls = buildWalls,
-	car = buildCar,
 	floor = buildUpperFloor,
 }
 
@@ -708,6 +829,9 @@ local function purchase(plot, owner, item)
 	data.owned[item.id] = true
 	buildItem(plot, item)
 	refreshButtons(plot)
+	if item.kind == "parking" or item.kind == "floor" then
+		renderSlots(plot) -- nouvelles places de parking
+	end
 	plot.buying = false
 	return true
 end
@@ -771,6 +895,11 @@ local function performRebirth(plot, owner)
 	rebirths.Value += 1
 	cash.Value = Config.StartingCash
 	data.owned = {}
+	for index in pairs(data.cars) do
+		if index > Config.RebirthKeepSlots then
+			data.cars[index] = nil
+		end
+	end
 	plot.items:ClearAllChildren()
 	plot.drops:ClearAllChildren()
 	for _, oldButton in pairs(plot.buttons) do
@@ -780,6 +909,7 @@ local function performRebirth(plot, owner)
 	plot.rebirthButton:Destroy()
 	plot.rebirthButton = nil
 	applyTheme(plot)
+	renderSlots(plot)
 	refreshButtons(plot)
 	plot.buying = false
 	local tier = getTier(owner)
@@ -908,6 +1038,9 @@ local function createPlot(index)
 	plot.decor = Instance.new("Folder")
 	plot.decor.Name = "Decor"
 	plot.decor.Parent = model
+	plot.carSlots = Instance.new("Folder")
+	plot.carSlots.Name = "CarSlots"
+	plot.carSlots.Parent = model
 
 	plot.floor = makePart(model, {
 		Name = "Floor", Size = Vector3.new(80, 1, 80), CFrame = at(plot, 0, -0.5, 0),
@@ -1023,38 +1156,48 @@ local function setSlotLabel(slot, title, subtitle)
 	slot.label = createBillboard(slot.podium, title, subtitle, 7, 10)
 end
 
-local function buyPrice(item)
-	return math.floor(item.price * Config.MarketBuyerPrice)
+local function buyPrice(car)
+	return math.floor(car.price * Config.MarketBuyerPrice)
 end
 
 local function clearSlot(slot)
 	slot.listing = nil
 	slot.display:ClearAllChildren()
 	slot.prompt.Enabled = false
-	setSlotLabel(slot, "EMPTY SPOT", "Sell a car from your showroom")
+	setSlotLabel(slot, "EMPTY SPOT", "Sell a car from your garage")
+end
+
+-- Donne une voiture à quelqu'un : place libre, sinon on le rembourse
+local function giveCar(owner, car)
+	local data = playerData[owner]
+	if not data then
+		return false
+	end
+	local index = freeSlotIndex(data)
+	if index then
+		data.cars[index] = car.id
+		if data.plot then
+			renderSlot(data.plot, index)
+		end
+		return true
+	end
+	local cash = getCash(owner)
+	if cash then
+		cash.Value += car.price
+	end
+	return false
 end
 
 -- Rend une voiture invendue à son propriétaire
 local function returnCar(slot)
 	local listing = slot.listing
 	clearSlot(slot)
-	local seller, item = listing.seller, listing.item
-	local data = playerData[seller]
-	if not data then
-		return
+	local seller, car = listing.seller, listing.car
+	if giveCar(seller, car) then
+		notify(seller, car.name .. " was not sold and is back in your garage.")
+	else
+		notify(seller, car.name .. " was not sold. Your garage is full: refunded $" .. formatMoney(car.price))
 	end
-	if data.owned[item.id] then
-		-- Il l'a rachetée entre-temps : on le rembourse
-		local cash = getCash(seller)
-		if cash then
-			cash.Value += item.price
-		end
-	elseif data.plot then
-		data.owned[item.id] = true
-		buildItem(data.plot, item)
-		refreshButtons(data.plot)
-	end
-	notify(seller, item.name .. " was not sold and is back in your garage.")
 end
 
 local function buyCar(slot, buyer)
@@ -1062,7 +1205,7 @@ local function buyCar(slot, buyer)
 	if not listing then
 		return
 	end
-	local item, seller = listing.item, listing.seller
+	local car, seller = listing.car, listing.seller
 	if buyer == seller then
 		returnCar(slot) -- le vendeur retire sa voiture
 		return
@@ -1072,33 +1215,27 @@ local function buyCar(slot, buyer)
 	if not data or not data.plot or not cash then
 		return
 	end
-	if data.owned[item.id] then
-		notify(buyer, "You already own this car!")
+	if not freeSlotIndex(data) then
+		notify(buyer, "Your garage is full! Quick sell a car (F) or buy more parking.")
 		return
 	end
-	if item.requires and not data.owned[item.requires] then
-		notify(buyer, "Unlock " .. itemsById[item.requires].name .. " first!")
-		return
-	end
-	local price = buyPrice(item)
+	local price = buyPrice(car)
 	if cash.Value < price then
 		notify(buyer, "Not enough cash! You need $" .. formatMoney(price))
 		return
 	end
 
 	cash.Value -= price
-	data.owned[item.id] = true
-	buildItem(data.plot, item)
-	refreshButtons(data.plot)
+	giveCar(buyer, car)
 	clearSlot(slot)
-	notify(buyer, "You bought " .. item.name .. "!")
+	notify(buyer, "You bought " .. car.name .. "!")
 
-	local sellerCash = playerData[seller] and getCash(seller)
+	local sellerData = playerData[seller]
+	local sellerCash = sellerData and getCash(seller)
 	if sellerCash then
-		local sellerData = playerData[seller]
-		local earned = math.floor(item.price * (Config.MarketSellerBonus + perkBonus(sellerData.owned, "marketBonus")))
+		local earned = math.floor(car.price * (Config.MarketSellerBonus + perkBonus(sellerData.owned, "marketBonus")))
 		sellerCash.Value += earned
-		notify(seller, displayName(buyer) .. " bought your " .. item.name .. "! +$" .. formatMoney(earned))
+		notify(seller, displayName(buyer) .. " bought your " .. car.name .. "! +$" .. formatMoney(earned))
 	end
 end
 
@@ -1131,11 +1268,12 @@ for i = 1, Config.MarketSlots do
 	slots[i] = slot
 end
 
--- Met une voiture du showroom en vente au marché
-function listCar(plot, item)
+-- Met une voiture du garage en vente au marché
+function listCar(plot, index)
 	local seller = plot.owner
 	local data = seller and playerData[seller]
-	if not data or not data.owned[item.id] then
+	local car = data and data.cars[index] and carsById[data.cars[index]]
+	if not car then
 		return
 	end
 	local freeSlot = nil
@@ -1150,23 +1288,21 @@ function listCar(plot, item)
 		return
 	end
 
-	-- La voiture quitte le showroom du vendeur
-	data.owned[item.id] = nil
-	local carModel = plot.items:FindFirstChild(item.id)
-	if carModel then
-		carModel:Destroy()
-	end
-	refreshButtons(plot)
+	-- La voiture quitte le garage du vendeur
+	data.cars[index] = nil
+	renderSlot(plot, index)
 
-	freeSlot.listing = { seller = seller, item = item, expires = os.clock() + Config.MarketDuration }
-	placeCar(item, freeSlot.display, freeSlot.base)
-	freeSlot.prompt.ActionText = "Buy for $" .. formatMoney(buyPrice(item))
-	freeSlot.prompt.ObjectText = item.name .. " (seller: " .. displayName(seller) .. ")"
+	local rarity = raritiesById[car.rarity]
+	freeSlot.listing = { seller = seller, car = car, expires = os.clock() + Config.MarketDuration }
+	decorateRarity(placeCar(car, freeSlot.display, freeSlot.base), car)
+	freeSlot.prompt.ActionText = "Buy for $" .. formatMoney(buyPrice(car))
+	freeSlot.prompt.ObjectText = car.name .. " (seller: " .. displayName(seller) .. ")"
 	freeSlot.prompt.Enabled = true
-	setSlotLabel(freeSlot, item.name, "$" .. formatMoney(buyPrice(item)) .. "  ·  " .. displayName(seller))
+	setSlotLabel(freeSlot, car.name .. " · " .. rarity.name,
+		"$" .. formatMoney(buyPrice(car)) .. "  ·  " .. displayName(seller))
 	local minutes = math.floor(Config.MarketDuration / 60 + 0.5)
-	notify(seller, item.name .. " is on the market for " .. minutes .. " min. Sold = +$"
-		.. formatMoney(math.floor(item.price * Config.MarketSellerBonus)) .. "!")
+	notify(seller, car.name .. " is on the market for " .. minutes .. " min. Sold = +$"
+		.. formatMoney(math.floor(car.price * Config.MarketSellerBonus)) .. "!")
 end
 
 -- Annonces expirées : la voiture revient chez le vendeur
@@ -1184,16 +1320,174 @@ end)
 
 -- Le vendeur quitte le jeu : ses voitures en vente lui sont rendues (avant la sauvegarde)
 local function cancelListings(player)
-	local data = playerData[player]
 	for _, slot in ipairs(slots) do
 		if slot.listing and slot.listing.seller == player then
-			if data then
-				data.owned[slot.listing.item.id] = true
-			end
+			local car = slot.listing.car
 			clearSlot(slot)
+			giveCar(player, car)
 		end
 	end
 end
+
+-- ============================================================
+-- Tapis de livraison : un anneau autour du marché où défilent des voitures
+-- de rareté aléatoire. Le premier qui l'achète la récupère !
+-- ============================================================
+
+local beltFolder = Instance.new("Folder")
+beltFolder.Name = "DeliveryBelt"
+beltFolder.Parent = workspace
+
+local BELT_RADIUS = Config.DeliveryRadius or 44
+local BELT_SEGMENTS = 64
+for i = 1, BELT_SEGMENTS do
+	local angle = (i / BELT_SEGMENTS) * 2 * math.pi
+	local position = Vector3.new(math.cos(angle) * BELT_RADIUS, 0.15, math.sin(angle) * BELT_RADIUS)
+	local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+	local length = 2 * math.pi * BELT_RADIUS / BELT_SEGMENTS + 0.3
+	makePart(beltFolder, {
+		Name = "Belt", Size = Vector3.new(11, 0.3, length), CFrame = CFrame.lookAt(position, position + tangent),
+		Color = Color3.fromRGB(30, 30, 35), Material = Enum.Material.DiamondPlate, CastShadow = false,
+	})
+	for _, side in ipairs({ -5.6, 5.6 }) do
+		local edge = Vector3.new(math.cos(angle) * (BELT_RADIUS + side), 0.35, math.sin(angle) * (BELT_RADIUS + side))
+		makePart(beltFolder, {
+			Name = "BeltEdge", Size = Vector3.new(0.3, 0.2, length), CFrame = CFrame.lookAt(edge, edge + tangent),
+			Color = COLOR_GOLD, Material = Enum.Material.Neon, CastShadow = false,
+		})
+	end
+end
+local beltSign = makePart(beltFolder, {
+	Name = "BeltSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(BELT_RADIUS, 12, 0),
+	Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
+})
+createBillboard(beltSign, "CAR DELIVERY", "Rare cars pass by... be fast!", 0, 22)
+
+local beltCars = {} -- { car, model, root, offset, angle }
+
+local function beltCFrame(angle)
+	local position = Vector3.new(math.cos(angle) * BELT_RADIUS, 0.3, math.sin(angle) * BELT_RADIUS)
+	local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+	return CFrame.lookAt(position, position + tangent)
+end
+
+-- Tire une rareté au hasard selon les chances (weight), puis une voiture de cette rareté
+local function rollCar(rarityId)
+	if not rarityId then
+		local total = 0
+		for _, rarity in ipairs(Config.Rarities) do
+			total += rarity.weight
+		end
+		local pick = math.random() * total
+		for _, rarity in ipairs(Config.Rarities) do
+			pick -= rarity.weight
+			if pick <= 0 then
+				rarityId = rarity.id
+				break
+			end
+		end
+	end
+	local candidates = {}
+	for _, car in ipairs(Config.Cars) do
+		if car.rarity == rarityId then
+			table.insert(candidates, car)
+		end
+	end
+	return candidates[math.random(#candidates)] or Config.Cars[1]
+end
+
+local function removeBeltCar(entry)
+	entry.removed = true
+	entry.model:Destroy()
+	local position = table.find(beltCars, entry)
+	if position then
+		table.remove(beltCars, position)
+	end
+end
+
+local function buyFromBelt(entry, buyer)
+	if entry.removed then
+		return
+	end
+	local car = entry.car
+	local data = playerData[buyer]
+	local cash = getCash(buyer)
+	if not data or not data.plot or not cash then
+		return
+	end
+	if not freeSlotIndex(data) then
+		notify(buyer, "Your garage is full! Quick sell a car (F) or buy more parking.")
+		return
+	end
+	if cash.Value < car.price then
+		notify(buyer, "Not enough cash! " .. car.name .. " costs $" .. formatMoney(car.price))
+		return
+	end
+	cash.Value -= car.price
+	removeBeltCar(entry)
+	giveCar(buyer, car)
+	notify(buyer, "You got a " .. raritiesById[car.rarity].name .. " " .. car.name .. "!")
+end
+
+local function spawnBeltCar(rarityId)
+	if #beltCars >= Config.DeliveryMaxCars then
+		return
+	end
+	local car = rollCar(rarityId)
+	local rarity = raritiesById[car.rarity]
+	local model = Instance.new("Model")
+	model.Name = "Delivery_" .. car.id
+	model.Parent = beltFolder
+	local start = beltCFrame(0)
+	local carModel = placeCar(car, model, start, true)
+	local root = carModel and carModel.PrimaryPart
+	if not root then
+		model:Destroy()
+		return
+	end
+	decorateRarity(carModel, car)
+	createBillboard(root, car.name, rarity.name .. "  ·  $" .. formatMoney(car.price), 6, 11, rarity.color)
+
+	local entry = { car = car, model = model, root = root, offset = start:ToObjectSpace(root.CFrame), angle = 0 }
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Buy $" .. formatMoney(car.price)
+	prompt.ObjectText = car.name .. " (" .. rarity.name .. ")"
+	prompt.HoldDuration = 0.3
+	prompt.MaxActivationDistance = 14
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = root
+	prompt.Triggered:Connect(function(player)
+		buyFromBelt(entry, player)
+	end)
+	table.insert(beltCars, entry)
+
+	if rarity.announce then
+		for _, player in ipairs(Players:GetPlayers()) do
+			notify(player, "A " .. rarity.name .. " " .. car.name .. " is on the delivery belt!")
+		end
+	end
+end
+
+-- Le tapis avance : on déplace seulement la pièce principale (le reste est soudé)
+RunService.Heartbeat:Connect(function(dt)
+	local speed = 2 * math.pi / Config.DeliveryLoopTime
+	for i = #beltCars, 1, -1 do
+		local entry = beltCars[i]
+		entry.angle += speed * dt
+		if entry.angle >= 2 * math.pi or not entry.root.Parent then
+			removeBeltCar(entry)
+		else
+			entry.root.CFrame = beltCFrame(entry.angle) * entry.offset
+		end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(Config.DeliveryInterval)
+		spawnBeltCar()
+	end
+end)
 
 -- ============================================================
 -- Niveau du garage : plus de rebirths = garage plus luxueux et plus grand
@@ -1378,6 +1672,7 @@ local function assignPlot(plot, player)
 		end
 	end
 	applyTheme(plot)
+	renderSlots(plot)
 	refreshButtons(plot)
 	createGamePassPad(plot)
 end
@@ -1386,6 +1681,7 @@ local function releasePlot(plot)
 	plot.owner = nil
 	plot.items:ClearAllChildren()
 	plot.drops:ClearAllChildren()
+	plot.carSlots:ClearAllChildren()
 	for _, button in pairs(plot.buttons) do
 		button:Destroy()
 	end
@@ -1437,7 +1733,7 @@ local function loadData(player)
 	if RunService:IsStudio() and Config.StudioTestCash > 0 then
 		startingCash = Config.StudioTestCash -- mode test : uniquement dans Studio
 	end
-	local data = { owned = {}, cash = startingCash, rebirths = 0, loaded = true }
+	local data = { owned = {}, cars = {}, cash = startingCash, rebirths = 0, loaded = true }
 	if not dataStore then
 		return data
 	end
@@ -1458,6 +1754,13 @@ local function loadData(player)
 				end
 			end
 		end
+		if type(saved.cars) == "table" then
+			for _, entry in ipairs(saved.cars) do
+				if type(entry) == "table" and carsById[entry.car] and Config.CarSlots[entry.slot] then
+					data.cars[entry.slot] = entry.car
+				end
+			end
+		end
 	end
 	return data
 end
@@ -1472,10 +1775,15 @@ local function saveData(player)
 	for id in pairs(data.owned) do
 		table.insert(owned, id)
 	end
+	local cars = {}
+	for slot, carId in pairs(data.cars) do
+		table.insert(cars, { slot = slot, car = carId })
+	end
 	local ok, err = pcall(function()
 		dataStore:SetAsync("player_" .. player.UserId, {
 			cash = cash.Value,
 			owned = owned,
+			cars = cars,
 			rebirths = getRebirths(player),
 		})
 	end)
@@ -1663,7 +1971,7 @@ local function setThought(state, text)
 end
 
 -- Revenu estimé par seconde (machines x améliorations + voitures) : sert aux bots à réfléchir
-local function estimateIncome(owner, owned)
+local function estimateIncome(owner, owned, cars)
 	local dropperIncome, upgrade, carIncome = 0, 1, 0
 	for _, item in ipairs(Config.Items) do
 		if owned[item.id] then
@@ -1671,9 +1979,13 @@ local function estimateIncome(owner, owned)
 				dropperIncome += item.value / item.interval
 			elseif item.kind == "upgrader" then
 				upgrade *= item.multiplier
-			elseif item.income then
-				carIncome += item.income
 			end
+		end
+	end
+	for _, carId in pairs(cars or {}) do
+		local car = carsById[carId]
+		if car then
+			carIncome += car.income
 		end
 	end
 	carIncome *= 1 + perkBonus(owned, "carIncomeBonus")
@@ -1681,17 +1993,28 @@ local function estimateIncome(owner, owned)
 end
 
 -- Combien d'argent par seconde rapporterait un achat (ou ce qu'il débloque)
-local function incomeGain(owner, owned, item)
+local function incomeGain(owner, owned, item, cars)
 	local with = table.clone(owned)
 	with[item.id] = true
-	local gain = estimateIncome(owner, with) - estimateIncome(owner, owned)
+	local gain = estimateIncome(owner, with, cars) - estimateIncome(owner, owned, cars)
+	if item.kind == "parking" or item.kind == "floor" then
+		-- Des places en plus valent surtout quand le garage est plein
+		local count, total = 0, 0
+		for _, carId in pairs(cars or {}) do
+			count += 1
+			total += carsById[carId].income
+		end
+		local data = { owned = owned, cars = cars or {} }
+		local full = freeSlotIndex(data) == nil
+		gain = (full and math.max(total / math.max(count, 1), 5) * 2 or 2) * getMultiplier(owner)
+	end
 	if gain <= 0 then
 		-- Pas de revenu direct (murs, étage) : on compte la moitié de ce qu'il débloque
 		for _, other in ipairs(Config.Items) do
 			if other.requires == item.id then
 				local unlocked = table.clone(with)
 				unlocked[other.id] = true
-				gain += (estimateIncome(owner, unlocked) - estimateIncome(owner, with)) * 0.5
+				gain += (estimateIncome(owner, unlocked, cars) - estimateIncome(owner, with, cars)) * 0.5
 			end
 		end
 		gain = math.max(gain, 1)
@@ -1711,29 +2034,47 @@ local function botBrain(bot, state)
 		if not bots[bot] or not data or not cash then
 			break
 		end
-		local income = math.max(estimateIncome(bot, data.owned), 1)
+		local income = math.max(estimateIncome(bot, data.owned, data.cars), 1)
 
 		-- 1) Lister les options
 		local options = {}
 		for _, item in ipairs(Config.Items) do
 			if plot.buttons[item.id] then
-				local gain = incomeGain(bot, data.owned, item)
+				local gain = incomeGain(bot, data.owned, item, data.cars)
 				local wait = math.max(0, item.price - cash.Value) / income
 				-- temps total = temps pour réunir l'argent + temps pour le rembourser
 				table.insert(options, { kind = "buy", item = item, wait = wait, score = wait + item.price / gain })
 			end
 		end
+		-- Voitures : sur le tapis de livraison et au marché
+		local hasFreeSlot = freeSlotIndex(data) ~= nil
+		local worstSlot, worstIncome = worstCarSlot(data)
+		local multiplier = getMultiplier(bot)
+		local function considerCar(kind, car, price, extra)
+			-- Garage plein : intéressant seulement si elle rapporte plus que la pire voiture
+			local gain = car.income - (hasFreeSlot and 0 or worstIncome)
+			if gain <= 0 then
+				return
+			end
+			local wait = math.max(0, price - cash.Value) / income
+			local option = { kind = kind, item = car, wait = wait, score = wait + price / (gain * multiplier) }
+			for key, value in pairs(extra) do
+				option[key] = value
+			end
+			table.insert(options, option)
+		end
+		local speed = 2 * math.pi / Config.DeliveryLoopTime
+		for _, entry in ipairs(beltCars) do
+			local timeLeft = (2 * math.pi - entry.angle) / speed
+			-- Inutile d'économiser pour une voiture qui aura quitté le tapis avant
+			if math.max(0, entry.car.price - cash.Value) / income < timeLeft then
+				considerCar("belt", entry.car, entry.car.price, { entry = entry })
+			end
+		end
 		for _, slot in ipairs(slots) do
 			local listing = slot.listing
-			if listing and listing.seller ~= bot and not data.owned[listing.item.id]
-				and (not listing.item.requires or data.owned[listing.item.requires]) then
-				local item = listing.item
-				local price = buyPrice(item)
-				local wait = math.max(0, price - cash.Value) / income
-				table.insert(options, {
-					kind = "market", slot = slot, item = item, wait = wait,
-					score = wait + price / incomeGain(bot, data.owned, item),
-				})
+			if listing and listing.seller ~= bot then
+				considerCar("market", listing.car, buyPrice(listing.car), { slot = slot })
 			end
 		end
 		if plot.rebirthButton then
@@ -1776,9 +2117,18 @@ local function botBrain(bot, state)
 			if bots[bot] then
 				purchase(plot, bot, choice.item)
 			end
-		elseif choice.kind == "market" then
-			setThought(state, reason or ("Cheap " .. choice.item.name .. " at the market!"))
-			buyCar(choice.slot, bot)
+		elseif choice.kind == "belt" or choice.kind == "market" then
+			if not freeSlotIndex(data) and worstSlot then
+				quickSell(plot, worstSlot) -- fait de la place pour une meilleure voiture
+			end
+			if choice.kind == "belt" then
+				local rarity = raritiesById[choice.item.rarity]
+				setThought(state, reason or ("A " .. rarity.name .. " " .. choice.item.name .. "? I want it!"))
+				buyFromBelt(choice.entry, bot)
+			else
+				setThought(state, reason or ("Cheap " .. choice.item.name .. " at the market!"))
+				buyCar(choice.slot, bot)
+			end
 		elseif choice.kind == "rebirth" then
 			setThought(state, "Rebirth time! My garage will level up!")
 			botWalkTo(state, at(plot, Config.RebirthButton.X, 3, Config.RebirthButton.Z).Position)
@@ -1795,16 +2145,15 @@ local function botBrain(bot, state)
 			end
 		end
 		if not hasListing and os.clock() > (state.nextTrade or 0) and math.random() < personality.trading then
-			local cars = {}
-			for _, item in ipairs(Config.Items) do
-				if item.kind == "car" and data.owned[item.id] then
-					table.insert(cars, item)
-				end
+			local count = 0
+			for _ in pairs(data.cars) do
+				count += 1
 			end
-			if #cars >= 2 then
-				local item = cars[1] -- la moins chère : il garde ses meilleures voitures
-				setThought(state, "Selling my " .. item.name .. " for +50% profit!")
-				listCar(plot, item)
+			local sellSlot = worstCarSlot(data) -- recalculé : il a pu vendre une voiture juste avant
+			if count >= 3 and sellSlot then
+				-- il vend sa moins bonne voiture et garde les meilleures
+				setThought(state, "Selling my " .. carsById[data.cars[sellSlot]].name .. " for +50% profit!")
+				listCar(plot, sellSlot)
 				state.nextTrade = os.clock() + Config.BotTradeCooldown
 			end
 		end
@@ -1840,7 +2189,7 @@ local function createBot(plot)
 	rebirths.Parent = leaderstats
 	bot.Parent = botsFolder
 
-	playerData[bot] = { owned = {}, cash = 0, rebirths = 0, loaded = false }
+	playerData[bot] = { owned = {}, cars = {}, cash = 0, rebirths = 0, loaded = false }
 	local personality = Config.BotPersonalities[math.random(#Config.BotPersonalities)]
 	local state = { plot = plot, personality = personality }
 	bots[bot] = state
@@ -1918,6 +2267,12 @@ local function onTestCommand(player, message)
 	if command == "cash" and stats then
 		stats.Cash.Value = amount
 		notify(player, "Test: cash set to $" .. formatMoney(amount))
+	elseif command == "deliver" then
+		local rarity = Config.Rarities[amount]
+		if rarity then
+			spawnBeltCar(rarity.id)
+			notify(player, "Test: a " .. rarity.name .. " car is on the delivery belt")
+		end
 	elseif command == "rebirths" and stats then
 		stats.Rebirths.Value = amount
 		local data = playerData[player]
@@ -2005,9 +2360,10 @@ task.spawn(function()
 			local cash = owner and getCash(owner)
 			if data and cash then
 				local income = 0
-				for _, item in ipairs(Config.Items) do
-					if item.income and data.owned[item.id] then
-						income += item.income
+				for _, carId in pairs(data.cars) do
+					local car = carsById[carId]
+					if car then
+						income += car.income
 					end
 				end
 				income *= 1 + perkBonus(data.owned, "carIncomeBonus")

@@ -106,7 +106,7 @@ if RunService:IsStudio() then
 		local panel = Instance.new("Frame")
 		panel.AnchorPoint = Vector2.new(1, 0.5)
 		panel.Position = UDim2.new(1, -12, 0.5, 0)
-		panel.Size = UDim2.fromOffset(150, 170)
+		panel.Size = UDim2.fromOffset(150, 240)
 		panel.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 		panel.BackgroundTransparency = 0.25
 		panel.Parent = gui
@@ -150,5 +150,7 @@ if RunService:IsStudio() then
 		addButton("+ $250K", "addcash", 250000)
 		addButton("+1 Rebirth", "addrebirth", 1)
 		addButton("Reset Rebirths", "rebirths", 0)
+		addButton("Belt: Legendary", "deliver", 4)
+		addButton("Belt: EXTREME", "deliver", 6)
 	end
 end

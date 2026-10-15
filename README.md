@@ -71,6 +71,25 @@ Pas besoin de code : sur le Creator Dashboard, ouvre ton expérience → **Monet
 (gratuits, ou payants en Robux par mois). Les joueurs peuvent alors créer un serveur privé et y inviter leurs amis ;
 les autres jouent en public. Pense aussi à régler le **nombre max de joueurs à 8** (il y a 8 garages).
 
+## Raretés et tapis de livraison
+
+- Les voitures ne s'achètent plus à la boutique : elles défilent sur le **tapis de livraison** (anneau autour du marché),
+  avec une rareté aléatoire : COMMON, RARE, EPIC, LEGENDARY, MYTHIC et **EXTREME LEGENDARY** (1 % de chance).
+- Maintiens **E** sur une voiture du tapis pour l'acheter. Elle va sur une place libre de ton garage.
+- Sur ta place : **E** = vendre au marché, **F** = vente rapide (50 % du prix).
+- Places : 3 au départ, +2 avec « Extra Parking », +5 avec l'étage VIP. Au rebirth, tu gardes les voitures des 3 premières places.
+
+Noms des modèles à ranger dans `ServerStorage > Assets` (2 par rareté) :
+
+| Rareté | Modèles |
+|---|---|
+| COMMON | `Common1`, `Common2` |
+| RARE | `SportCar`, `SportCar2` |
+| EPIC | `SportCar3`, `Epic2` |
+| LEGENDARY | `Supercar`, `Legendary2` |
+| MYTHIC | `Supercar2`, `Mythic2` |
+| EXTREME LEGENDARY | `Extreme1`, `Extreme2` |
+
 ## Utiliser de vrais modèles de la Boîte à outils
 
 Le jeu peut remplacer ses formes simples par des modèles choisis dans la Boîte à outils de Studio.

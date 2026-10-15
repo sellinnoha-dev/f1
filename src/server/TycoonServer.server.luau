@@ -18,7 +18,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "12 - commandes de test"
+local EXPECTED_CONFIG_VERSION = "13 - commandes chat"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -1909,7 +1909,7 @@ local function onTestCommand(player, message)
 	if not RunService:IsStudio() then
 		return
 	end
-	local command, amount = message:match("^/(%a+)%s+(%d+)$")
+	local command, amount = message:match("^%s*/(%a+)%s+(%d+)")
 	amount = tonumber(amount)
 	if not command or not amount then
 		return
@@ -1928,15 +1928,34 @@ local function onTestCommand(player, message)
 	end
 end
 
-Players.PlayerAdded:Connect(function(player)
+-- Nouveau chat Roblox (TextChatService) : commandes officielles, invisibles pour les autres
+local TextChatService = game:GetService("TextChatService")
+if RunService:IsStudio() then
+	for _, name in ipairs({ "cash", "rebirths" }) do
+		local command = Instance.new("TextChatCommand")
+		command.Name = "Test_" .. name
+		command.PrimaryAlias = "/" .. name
+		command.Parent = TextChatService
+		command.Triggered:Connect(function(source, text)
+			local player = Players:GetPlayerByUserId(source.UserId)
+			if player then
+				onTestCommand(player, text)
+			end
+		end)
+	end
+end
+
+-- Ancien chat Roblox : on lit les messages directement
+local function listenChat(player)
 	player.Chatted:Connect(function(message)
-		onTestCommand(player, message)
+		if TextChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
+			onTestCommand(player, message)
+		end
 	end)
-end)
+end
+Players.PlayerAdded:Connect(listenChat)
 for _, player in ipairs(Players:GetPlayers()) do
-	player.Chatted:Connect(function(message)
-		onTestCommand(player, message)
-	end)
+	listenChat(player)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

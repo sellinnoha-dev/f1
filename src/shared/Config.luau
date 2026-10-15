@@ -6,7 +6,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "1 - premiere vague"
+Config.Version = "2 - vague qui fait peur"
 Config.GameName = "Tsunami Critters"
 
 Config.StartingCash = 0
@@ -19,10 +19,10 @@ Config.AutosaveInterval = 120
 -- ============================================================
 -- CARTE : un long chemin entre deux falaises, de la base (X = 0) jusqu'à la mer
 -- ============================================================
-Config.PathLength = 900
+Config.PathLength = 1500
 Config.PathWidth = 60
--- Tranchées où se cacher (position le long du chemin)
-Config.Trenches = { 90, 200, 310, 420, 530, 640, 750, 860 }
+-- Tranchées où se cacher (position le long du chemin) : de plus en plus espacées
+Config.Trenches = { 100, 200, 310, 430, 560, 700, 850, 1010, 1180, 1360 }
 Config.TrenchLength = 14
 Config.TrenchDepth = 9
 
@@ -36,34 +36,45 @@ Config.Rarities = {
 	{ id = "legendary", name = "LEGENDARY", color = Color3.fromRGB(255, 190, 0) },
 	{ id = "mythic", name = "MYTHIC", color = Color3.fromRGB(255, 50, 80) },
 	{ id = "secret", name = "SECRET", color = Color3.fromRGB(0, 255, 220) },
+	-- Jamais sur le chemin : apparaît parfois devant les bases après une vague
+	{ id = "divine", name = "DIVINE", color = Color3.fromRGB(255, 255, 255) },
 }
 
 -- Zones du chemin (dans l'ordre, depuis la base)
+--   chances = probabilité de chaque rareté dans la zone ; count = créatures en même temps
 Config.Zones = {
-	{ rarity = "common", from = 0, to = 150, color = Color3.fromRGB(120, 180, 95) },
-	{ rarity = "rare", from = 150, to = 300, color = Color3.fromRGB(95, 150, 200) },
-	{ rarity = "epic", from = 300, to = 450, color = Color3.fromRGB(150, 110, 200) },
-	{ rarity = "legendary", from = 450, to = 600, color = Color3.fromRGB(220, 180, 80) },
-	{ rarity = "mythic", from = 600, to = 750, color = Color3.fromRGB(200, 90, 100) },
-	{ rarity = "secret", from = 750, to = 900, color = Color3.fromRGB(60, 200, 190) },
+	{ rarity = "common", from = 0, to = 200, count = 6, color = Color3.fromRGB(120, 180, 95),
+		chances = { common = 90, rare = 10 } },
+	{ rarity = "rare", from = 200, to = 450, count = 5, color = Color3.fromRGB(95, 150, 200),
+		chances = { common = 30, rare = 62, epic = 8 } },
+	{ rarity = "epic", from = 450, to = 700, count = 5, color = Color3.fromRGB(150, 110, 200),
+		chances = { rare = 35, epic = 58, legendary = 7 } },
+	{ rarity = "legendary", from = 700, to = 950, count = 4, color = Color3.fromRGB(220, 180, 80),
+		chances = { epic = 45, legendary = 50, mythic = 5 } },
+	{ rarity = "mythic", from = 950, to = 1250, count = 3, color = Color3.fromRGB(200, 90, 100),
+		chances = { legendary = 55, mythic = 42, secret = 3 } },
+	{ rarity = "secret", from = 1250, to = 1500, count = 3, color = Color3.fromRGB(60, 200, 190),
+		chances = { mythic = 80, secret = 20 } },
 }
-Config.CreaturesPerZone = 5
-Config.SpawnInterval = 3 -- secondes entre deux apparitions (par zone)
-Config.BetterRarityChance = 0.15 -- chance qu'une créature de la rareté au-dessus apparaisse
+Config.SpawnInterval = 4 -- secondes entre deux apparitions (par zone)
+
+-- Créature DIVINE : après chaque vague, petite chance qu'elle apparaisse devant les bases
+-- (elle reste jusqu'à la vague suivante)
+Config.DivineChance = 0.04
 
 -- ============================================================
 -- LA VAGUE
 -- ============================================================
-Config.WaveInterval = 40 -- secondes de calme entre deux vagues
-Config.WaveWarning = 8 -- alerte avant l'arrivée
-Config.WaveStartX = 960 -- la vague part de la mer
-Config.WaveThickness = 30
+Config.WaveInterval = 35 -- secondes de calme entre deux vagues
+Config.WaveWarning = 7 -- alerte avant l'arrivée
+Config.WaveStartX = 1580 -- la vague part de la mer
+Config.WaveThickness = 40
 Config.SafeDepth = -3 -- dans une tranchée (plus bas que ça), la vague passe au-dessus
 Config.WaveTypes = {
-	{ name = "TSUNAMI", speed = 40, height = 45, weight = 60, color = Color3.fromRGB(40, 120, 220) },
-	{ name = "FAST TSUNAMI", speed = 65, height = 35, weight = 25, color = Color3.fromRGB(30, 170, 230) },
-	{ name = "GIANT TSUNAMI", speed = 32, height = 90, weight = 12, color = Color3.fromRGB(20, 70, 170) },
-	{ name = "LIGHTNING TSUNAMI", speed = 100, height = 40, weight = 3, color = Color3.fromRGB(150, 80, 255) },
+	{ name = "TSUNAMI", speed = 50, height = 60, weight = 60, color = Color3.fromRGB(30, 100, 190) },
+	{ name = "FAST TSUNAMI", speed = 80, height = 50, weight = 25, color = Color3.fromRGB(25, 140, 200) },
+	{ name = "GIANT TSUNAMI", speed = 40, height = 120, weight = 12, color = Color3.fromRGB(15, 55, 140) },
+	{ name = "LIGHTNING TSUNAMI", speed = 120, height = 55, weight = 3, color = Color3.fromRGB(110, 60, 200) },
 }
 
 -- ============================================================
@@ -74,12 +85,25 @@ Config.BasePedestals = 6
 Config.SellMultiplier = 30 -- prix de vente d'une créature = son gain par seconde x 30
 
 Config.Upgrades = {
-	{ id = "speed", name = "SPEED", perLevel = 3, description = "+3 walk speed",
-		prices = { 100, 300, 900, 2500, 7000, 20000, 55000, 150000, 400000, 1000000 } },
+	{ id = "speed", name = "SPEED", perLevel = 2, description = "+2 walk speed",
+		prices = { 150, 500, 1500, 5000, 15000, 50000, 150000, 500000 } },
 	{ id = "carry", name = "CARRY", perLevel = 1, description = "+1 critter carried",
-		prices = { 2000, 25000, 300000 } },
+		prices = { 3000, 50000, 750000 } },
 	{ id = "pedestals", name = "PEDESTALS", perLevel = 2, description = "+2 pedestals",
-		prices = { 500, 5000, 50000 } },
+		prices = { 800, 8000, 80000 } },
+}
+
+-- ============================================================
+-- OBJETS (boutique au fond de la zone des bases). Un objet = une utilisation.
+-- requires = rareté qu'il faut avoir déjà obtenue pour le débloquer
+-- ============================================================
+Config.Items = {
+	{ id = "cloak", name = "Invisibility Cloak", requires = "rare", price = 5000, duration = 12,
+		color = Color3.fromRGB(170, 200, 255), description = "Invisible for 12s" },
+	{ id = "freeze", name = "Freeze Ray", requires = "epic", price = 25000, duration = 4, range = 45,
+		color = Color3.fromRGB(120, 230, 255), description = "Freeze the closest player for 4s" },
+	{ id = "raidkey", name = "Raid Key", requires = "legendary", price = 100000, duration = 20,
+		color = Color3.fromRGB(255, 200, 40), description = "Enter another base for 20s and steal a critter" },
 }
 
 -- ============================================================
@@ -87,6 +111,7 @@ Config.Upgrades = {
 -- look : body = "ball", "block" ou "cylinder" ; extras = accessoires
 --   (antenna, feet, mustache, tophat, shades, propeller, headband, crown,
 --    wizardhat, shell, wings, halo, horns, brows)
+-- Musique et sons : voir le README (dossiers Music et Sounds dans SoundService)
 -- Pour utiliser ton propre modèle : range-le dans ServerStorage > Assets
 -- avec exactement le même nom que la créature (ex. "Bloop").
 -- ============================================================
@@ -150,6 +175,13 @@ Config.Creatures = {
 	{ id = "kingbloop", name = "King Bloop", rarity = "secret", income = 10000,
 		look = { body = "ball", size = 5, color = Color3.fromRGB(0, 230, 200), accent = Color3.fromRGB(255, 215, 0),
 			eyes = 2, extras = { "crown", "wings", "halo", "feet" }, material = Enum.Material.Glass } },
+
+	{ id = "prism", name = "Prism Prince", rarity = "divine", income = 50000,
+		look = { body = "ball", size = 5, color = Color3.fromRGB(255, 255, 255), accent = Color3.fromRGB(255, 120, 255),
+			eyes = 3, extras = { "crown", "wings", "halo" }, material = Enum.Material.Glass } },
+	{ id = "astral", name = "Astral Noodle", rarity = "divine", income = 75000,
+		look = { body = "cylinder", size = 5, color = Color3.fromRGB(40, 20, 90), accent = Color3.fromRGB(255, 230, 120),
+			eyes = 2, extras = { "horns", "wings", "halo", "mustache" }, material = Enum.Material.Neon } },
 }
 
 return Config

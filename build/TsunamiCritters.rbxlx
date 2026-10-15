@@ -20,7 +20,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "1 - premiere vague"
+Config.Version = "2 - vague qui fait peur"
 Config.GameName = "Tsunami Critters"
 
 Config.StartingCash = 0
@@ -33,10 +33,10 @@ Config.AutosaveInterval = 120
 -- ============================================================
 -- CARTE : un long chemin entre deux falaises, de la base (X = 0) jusqu'à la mer
 -- ============================================================
-Config.PathLength = 900
+Config.PathLength = 1500
 Config.PathWidth = 60
--- Tranchées où se cacher (position le long du chemin)
-Config.Trenches = { 90, 200, 310, 420, 530, 640, 750, 860 }
+-- Tranchées où se cacher (position le long du chemin) : de plus en plus espacées
+Config.Trenches = { 100, 200, 310, 430, 560, 700, 850, 1010, 1180, 1360 }
 Config.TrenchLength = 14
 Config.TrenchDepth = 9
 
@@ -50,34 +50,45 @@ Config.Rarities = {
 	{ id = "legendary", name = "LEGENDARY", color = Color3.fromRGB(255, 190, 0) },
 	{ id = "mythic", name = "MYTHIC", color = Color3.fromRGB(255, 50, 80) },
 	{ id = "secret", name = "SECRET", color = Color3.fromRGB(0, 255, 220) },
+	-- Jamais sur le chemin : apparaît parfois devant les bases après une vague
+	{ id = "divine", name = "DIVINE", color = Color3.fromRGB(255, 255, 255) },
 }
 
 -- Zones du chemin (dans l'ordre, depuis la base)
+--   chances = probabilité de chaque rareté dans la zone ; count = créatures en même temps
 Config.Zones = {
-	{ rarity = "common", from = 0, to = 150, color = Color3.fromRGB(120, 180, 95) },
-	{ rarity = "rare", from = 150, to = 300, color = Color3.fromRGB(95, 150, 200) },
-	{ rarity = "epic", from = 300, to = 450, color = Color3.fromRGB(150, 110, 200) },
-	{ rarity = "legendary", from = 450, to = 600, color = Color3.fromRGB(220, 180, 80) },
-	{ rarity = "mythic", from = 600, to = 750, color = Color3.fromRGB(200, 90, 100) },
-	{ rarity = "secret", from = 750, to = 900, color = Color3.fromRGB(60, 200, 190) },
+	{ rarity = "common", from = 0, to = 200, count = 6, color = Color3.fromRGB(120, 180, 95),
+		chances = { common = 90, rare = 10 } },
+	{ rarity = "rare", from = 200, to = 450, count = 5, color = Color3.fromRGB(95, 150, 200),
+		chances = { common = 30, rare = 62, epic = 8 } },
+	{ rarity = "epic", from = 450, to = 700, count = 5, color = Color3.fromRGB(150, 110, 200),
+		chances = { rare = 35, epic = 58, legendary = 7 } },
+	{ rarity = "legendary", from = 700, to = 950, count = 4, color = Color3.fromRGB(220, 180, 80),
+		chances = { epic = 45, legendary = 50, mythic = 5 } },
+	{ rarity = "mythic", from = 950, to = 1250, count = 3, color = Color3.fromRGB(200, 90, 100),
+		chances = { legendary = 55, mythic = 42, secret = 3 } },
+	{ rarity = "secret", from = 1250, to = 1500, count = 3, color = Color3.fromRGB(60, 200, 190),
+		chances = { mythic = 80, secret = 20 } },
 }
-Config.CreaturesPerZone = 5
-Config.SpawnInterval = 3 -- secondes entre deux apparitions (par zone)
-Config.BetterRarityChance = 0.15 -- chance qu'une créature de la rareté au-dessus apparaisse
+Config.SpawnInterval = 4 -- secondes entre deux apparitions (par zone)
+
+-- Créature DIVINE : après chaque vague, petite chance qu'elle apparaisse devant les bases
+-- (elle reste jusqu'à la vague suivante)
+Config.DivineChance = 0.04
 
 -- ============================================================
 -- LA VAGUE
 -- ============================================================
-Config.WaveInterval = 40 -- secondes de calme entre deux vagues
-Config.WaveWarning = 8 -- alerte avant l'arrivée
-Config.WaveStartX = 960 -- la vague part de la mer
-Config.WaveThickness = 30
+Config.WaveInterval = 35 -- secondes de calme entre deux vagues
+Config.WaveWarning = 7 -- alerte avant l'arrivée
+Config.WaveStartX = 1580 -- la vague part de la mer
+Config.WaveThickness = 40
 Config.SafeDepth = -3 -- dans une tranchée (plus bas que ça), la vague passe au-dessus
 Config.WaveTypes = {
-	{ name = "TSUNAMI", speed = 40, height = 45, weight = 60, color = Color3.fromRGB(40, 120, 220) },
-	{ name = "FAST TSUNAMI", speed = 65, height = 35, weight = 25, color = Color3.fromRGB(30, 170, 230) },
-	{ name = "GIANT TSUNAMI", speed = 32, height = 90, weight = 12, color = Color3.fromRGB(20, 70, 170) },
-	{ name = "LIGHTNING TSUNAMI", speed = 100, height = 40, weight = 3, color = Color3.fromRGB(150, 80, 255) },
+	{ name = "TSUNAMI", speed = 50, height = 60, weight = 60, color = Color3.fromRGB(30, 100, 190) },
+	{ name = "FAST TSUNAMI", speed = 80, height = 50, weight = 25, color = Color3.fromRGB(25, 140, 200) },
+	{ name = "GIANT TSUNAMI", speed = 40, height = 120, weight = 12, color = Color3.fromRGB(15, 55, 140) },
+	{ name = "LIGHTNING TSUNAMI", speed = 120, height = 55, weight = 3, color = Color3.fromRGB(110, 60, 200) },
 }
 
 -- ============================================================
@@ -88,12 +99,25 @@ Config.BasePedestals = 6
 Config.SellMultiplier = 30 -- prix de vente d'une créature = son gain par seconde x 30
 
 Config.Upgrades = {
-	{ id = "speed", name = "SPEED", perLevel = 3, description = "+3 walk speed",
-		prices = { 100, 300, 900, 2500, 7000, 20000, 55000, 150000, 400000, 1000000 } },
+	{ id = "speed", name = "SPEED", perLevel = 2, description = "+2 walk speed",
+		prices = { 150, 500, 1500, 5000, 15000, 50000, 150000, 500000 } },
 	{ id = "carry", name = "CARRY", perLevel = 1, description = "+1 critter carried",
-		prices = { 2000, 25000, 300000 } },
+		prices = { 3000, 50000, 750000 } },
 	{ id = "pedestals", name = "PEDESTALS", perLevel = 2, description = "+2 pedestals",
-		prices = { 500, 5000, 50000 } },
+		prices = { 800, 8000, 80000 } },
+}
+
+-- ============================================================
+-- OBJETS (boutique au fond de la zone des bases). Un objet = une utilisation.
+-- requires = rareté qu'il faut avoir déjà obtenue pour le débloquer
+-- ============================================================
+Config.Items = {
+	{ id = "cloak", name = "Invisibility Cloak", requires = "rare", price = 5000, duration = 12,
+		color = Color3.fromRGB(170, 200, 255), description = "Invisible for 12s" },
+	{ id = "freeze", name = "Freeze Ray", requires = "epic", price = 25000, duration = 4, range = 45,
+		color = Color3.fromRGB(120, 230, 255), description = "Freeze the closest player for 4s" },
+	{ id = "raidkey", name = "Raid Key", requires = "legendary", price = 100000, duration = 20,
+		color = Color3.fromRGB(255, 200, 40), description = "Enter another base for 20s and steal a critter" },
 }
 
 -- ============================================================
@@ -101,6 +125,7 @@ Config.Upgrades = {
 -- look : body = "ball", "block" ou "cylinder" ; extras = accessoires
 --   (antenna, feet, mustache, tophat, shades, propeller, headband, crown,
 --    wizardhat, shell, wings, halo, horns, brows)
+-- Musique et sons : voir le README (dossiers Music et Sounds dans SoundService)
 -- Pour utiliser ton propre modèle : range-le dans ServerStorage > Assets
 -- avec exactement le même nom que la créature (ex. "Bloop").
 -- ============================================================
@@ -164,6 +189,13 @@ Config.Creatures = {
 	{ id = "kingbloop", name = "King Bloop", rarity = "secret", income = 10000,
 		look = { body = "ball", size = 5, color = Color3.fromRGB(0, 230, 200), accent = Color3.fromRGB(255, 215, 0),
 			eyes = 2, extras = { "crown", "wings", "halo", "feet" }, material = Enum.Material.Glass } },
+
+	{ id = "prism", name = "Prism Prince", rarity = "divine", income = 50000,
+		look = { body = "ball", size = 5, color = Color3.fromRGB(255, 255, 255), accent = Color3.fromRGB(255, 120, 255),
+			eyes = 3, extras = { "crown", "wings", "halo" }, material = Enum.Material.Glass } },
+	{ id = "astral", name = "Astral Noodle", rarity = "divine", income = 75000,
+		look = { body = "cylinder", size = 5, color = Color3.fromRGB(40, 20, 90), accent = Color3.fromRGB(255, 230, 120),
+			eyes = 2, extras = { "horns", "wings", "halo", "mustache" }, material = Enum.Material.Neon } },
 }
 
 return Config
@@ -750,7 +782,7 @@ createBillboard(safeSign, "SAFE ZONE", "The wave never comes here", 0, 16, Color
 -- ============================================================
 
 local playerData = {} -- [player] = { creatures = {[index] = id}, upgrades = {}, plot, loaded }
-local carrying = {} -- [player] = { ids... }
+local carrying = {} -- [player] = { { id, owner = joueur volé ou nil }... }
 local plots = {}
 
 local plotsFolder = Instance.new("Folder")
@@ -829,6 +861,12 @@ local function createPlot(index)
 			Color = Color3.fromRGB(240, 240, 245), Material = Enum.Material.SmoothPlastic,
 		})
 	end
+	-- Barrière de protection à l'entrée (seule une Raid Key permet de passer)
+	plot.barrier = makePart(model, {
+		Name = "Barrier", Size = Vector3.new(44, 10, 0.4), CFrame = at(plot, 0, 5, -22.5),
+		Color = plot.color, Material = Enum.Material.ForceField, Transparency = 0.2,
+		CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+	})
 	local signPart = makePart(model, {
 		Name = "Sign", Size = Vector3.new(1, 1, 1), CFrame = at(plot, 0, 15, 22),
 		Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
@@ -873,6 +911,7 @@ local function inPlot(plot, position)
 end
 
 local renderPedestal -- défini juste en dessous
+local tryStealCritter -- défini plus bas (partie "Objets et vol")
 
 local function sellCreature(plot, index)
 	local owner = plot.owner
@@ -940,6 +979,22 @@ function renderPedestal(plot, index)
 	prompt.Triggered:Connect(function(player)
 		if player == plot.owner then
 			sellCreature(plot, index)
+		end
+	end)
+
+	-- Les autres joueurs (avec une Raid Key active) peuvent la voler
+	local stealPrompt = Instance.new("ProximityPrompt")
+	stealPrompt.ActionText = "STEAL"
+	stealPrompt.ObjectText = def.name
+	stealPrompt.HoldDuration = 1.5
+	stealPrompt.MaxActivationDistance = 9
+	stealPrompt.RequiresLineOfSight = false
+	stealPrompt:SetAttribute("OwnerId", plot.owner.UserId)
+	CollectionService:AddTag(stealPrompt, "ThiefOnly")
+	stealPrompt.Parent = base
+	stealPrompt.Triggered:Connect(function(player)
+		if player ~= plot.owner then
+			tryStealCritter(player, plot, index)
 		end
 	end)
 end
@@ -1075,8 +1130,8 @@ local function updateCarryVisual(player)
 	holder.Name = "CarriedCritters"
 	holder.Parent = character
 	local y = 1.2
-	for _, id in ipairs(list) do
-		local def = creaturesById[id]
+	for _, carried in ipairs(list) do
+		local def = creaturesById[carried.id]
 		local creature = makeCreatureModel(def)
 		creature:ScaleTo(0.6)
 		local height = (creature:GetAttribute("Height") or 3) * 0.6
@@ -1109,22 +1164,39 @@ local function grabCreature(player, entry)
 		return
 	end
 	removeGroundCreature(entry)
-	table.insert(list, entry.def.id)
+	table.insert(list, { id = entry.def.id })
 	updateCarryVisual(player)
 	local rarity = raritiesById[entry.def.rarity]
 	notify(player, "Got " .. entry.def.name .. " (" .. rarity.name .. ")! Run back to your base!")
-	if rarityIndex[entry.def.rarity] >= 5 then
+	if entry.divine then
+		notifyAll(player.Name .. " caught the DIVINE " .. entry.def.name .. "!!!")
+		workspace:SetAttribute("DivineAt", 0)
+	elseif rarityIndex[entry.def.rarity] >= 5 then
 		notifyAll(player.Name .. " grabbed a " .. rarity.name .. " " .. entry.def.name .. "!")
 	end
 end
 
--- Tire une créature pour une zone (parfois de la rareté au-dessus)
+-- Tire une créature pour une zone selon les chances de chaque rareté
 local function rollCreature(zoneIndex)
-	local level = zoneIndex
-	if math.random() < Config.BetterRarityChance and Config.Rarities[level + 1] then
-		level += 1
+	local chances = Config.Zones[zoneIndex].chances or { [Config.Zones[zoneIndex].rarity] = 1 }
+	local total = 0
+	for _, weight in pairs(chances) do
+		total += weight
 	end
-	for i = level, 1, -1 do
+	local pick = math.random() * total
+	local rarityId = Config.Zones[zoneIndex].rarity
+	for _, rarity in ipairs(Config.Rarities) do
+		local weight = chances[rarity.id]
+		if weight then
+			pick -= weight
+			if pick <= 0 then
+				rarityId = rarity.id
+				break
+			end
+		end
+	end
+	-- Aucune créature de cette rareté ? On descend d'un cran
+	for i = rarityIndex[rarityId], 1, -1 do
 		local list = creaturesByRarity[Config.Rarities[i].id]
 		if #list > 0 then
 			return list[math.random(#list)]
@@ -1142,11 +1214,11 @@ local function nearTrench(x, margin)
 	return false
 end
 
-local function spawnCreature(zoneIndex, forcedDef)
+local function spawnCreature(zoneIndex, forcedDef, fromX, toX)
 	local zone = Config.Zones[zoneIndex]
 	local x
 	for _ = 1, 10 do
-		local candidate = math.random(zone.from + 12, zone.to - 6)
+		local candidate = math.random(fromX or (zone.from + 12), toX or (zone.to - 6))
 		if not nearTrench(candidate, 6) then
 			x = candidate
 			break
@@ -1187,16 +1259,79 @@ local function zoneCount(zoneIndex)
 	return count
 end
 
-task.spawn(function()
-	for zoneIndex in ipairs(Config.Zones) do
-		for _ = 1, Config.CreaturesPerZone do
+-- Remplit toutes les zones (au lancement et après chaque vague : nouvelles créatures)
+local function refillAll()
+	for zoneIndex, zone in ipairs(Config.Zones) do
+		for _ = zoneCount(zoneIndex) + 1, zone.count or 4 do
 			spawnCreature(zoneIndex)
 		end
 	end
+end
+
+-- La créature DIVINE : aura, colonne de lumière, annonce à tout le serveur
+local function spawnDivine(forcedDef)
+	local list = creaturesByRarity.divine
+	if not list or #list == 0 then
+		return
+	end
+	local def = forcedDef or list[math.random(#list)]
+	local entry = spawnCreature(1, def, 25, 70)
+	if not entry then
+		return
+	end
+	entry.divine = true
+	local root = entry.model.PrimaryPart
+	local function auraPart(props)
+		props.Anchored = false
+		props.CanCollide = false
+		props.CanTouch = false
+		props.CanQuery = false
+		props.CastShadow = false
+		props.Massless = true
+		local part = makePart(entry.model, props)
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = root
+		weld.Part1 = part
+		weld.Parent = part
+		return part
+	end
+	local center = root.CFrame
+	auraPart({ Name = "Aura", Shape = Enum.PartType.Ball, Size = Vector3.one * 11, CFrame = center,
+		Material = Enum.Material.ForceField, Color = Color3.fromRGB(255, 120, 255), Transparency = 0 })
+	auraPart({ Name = "Aura", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 13, 13),
+		CFrame = vertical(CFrame.new(center.Position - Vector3.new(0, 2, 0))), Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 255, 255), Transparency = 0.3 })
+	auraPart({ Name = "Aura", Shape = Enum.PartType.Cylinder, Size = Vector3.new(300, 3, 3),
+		CFrame = vertical(CFrame.new(center.Position + Vector3.new(0, 150, 0))), Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 255, 255), Transparency = 0.55 })
+	local light = Instance.new("PointLight")
+	light.Range = 30
+	light.Brightness = 5
+	light.Parent = root
+	for _, texture in ipairs({ "rbxasset://textures/particles/sparkles_main.dds", "rbxasset://textures/particles/fire_main.dds" }) do
+		local particles = Instance.new("ParticleEmitter")
+		particles.Texture = texture
+		particles.Rate = 25
+		particles.Lifetime = NumberRange.new(1, 2)
+		particles.Speed = NumberRange.new(3, 8)
+		particles.SpreadAngle = Vector2.new(180, 180)
+		particles.Size = NumberSequence.new(1.2, 0)
+		particles.LightEmission = 1
+		particles.Parent = root
+	end
+	CollectionService:AddTag(entry.model, "Divine")
+	workspace:SetAttribute("DivineName", def.name)
+	workspace:SetAttribute("DivineAt", workspace:GetServerTimeNow())
+	notifyAll("A DIVINE " .. def.name .. " appeared right in front of the bases!!!")
+	return entry
+end
+
+task.spawn(function()
+	refillAll()
 	while true do
 		task.wait(Config.SpawnInterval)
-		for zoneIndex in ipairs(Config.Zones) do
-			if zoneCount(zoneIndex) < Config.CreaturesPerZone then
+		for zoneIndex, zone in ipairs(Config.Zones) do
+			if zoneCount(zoneIndex) < (zone.count or 4) then
 				spawnCreature(zoneIndex)
 			end
 		end
@@ -1222,12 +1357,17 @@ local function deliver(player)
 		if not free then
 			break
 		end
-		local def = creaturesById[list[i]]
+		local carried = list[i]
+		local def = creaturesById[carried.id]
 		data.creatures[free] = def.id
 		table.remove(list, i)
 		renderPedestal(data.plot, free)
 		placed += 1
+		data.best = math.max(data.best or 0, rarityIndex[def.rarity])
 		notify(player, def.name .. " is now in your base: +$" .. formatMoney(def.income) .. "/s")
+		if carried.owner then
+			notify(carried.owner, player.Name .. " stole your " .. def.name .. "!")
+		end
 	end
 	if #list > 0 and not data.fullWarned then
 		data.fullWarned = true
@@ -1280,12 +1420,38 @@ local function waveFront()
 	return Config.WaveStartX - speed * (workspace:GetServerTimeNow() - start)
 end
 
+-- Rend une créature à son propriétaire (place libre, sinon il touche son prix de vente)
+local function giveBack(owner, id)
+	local data = owner and owner.Parent and playerData[owner]
+	local def = creaturesById[id]
+	if not data or not def then
+		return
+	end
+	for index = 1, pedestalCount(data) do
+		if not data.creatures[index] then
+			data.creatures[index] = id
+			renderPedestal(data.plot, index)
+			notify(owner, "Your " .. def.name .. " is back!")
+			return
+		end
+	end
+	local cash = getCash(owner)
+	if cash then
+		cash.Value += def.income * Config.SellMultiplier
+	end
+end
+
 local function loseCarried(player)
-	if carrying[player] and #carrying[player] > 0 then
-		local count = #carrying[player]
+	local list = carrying[player]
+	if list and #list > 0 then
 		carrying[player] = {}
+		for _, carried in ipairs(list) do
+			if carried.owner then
+				giveBack(carried.owner, carried.id)
+			end
+		end
 		updateCarryVisual(player)
-		notify(player, "You lost " .. count .. " critter(s)!")
+		notify(player, "You lost " .. #list .. " critter(s)!")
 	end
 end
 
@@ -1338,9 +1504,275 @@ RunService.Heartbeat:Connect(function()
 		if front < -10 then
 			workspace:SetAttribute("WaveState", "calm")
 			workspace:SetAttribute("WaveNextAt", now + Config.WaveInterval)
+			-- Après la vague : toutes nouvelles créatures, et peut-être une DIVINE
+			task.spawn(function()
+				refillAll()
+				if math.random() < Config.DivineChance then
+					spawnDivine()
+				end
+			end)
 		end
 	end
 end)
+
+
+-- ============================================================
+-- Objets et vol : cape d'invisibilité, rayon gelant, clé de raid
+-- ============================================================
+
+local raidUntil = {} -- [joueur] = os.clock() de fin de la clé de raid
+local itemsById = {}
+for _, item in ipairs(Config.Items) do
+	itemsById[item.id] = item
+end
+
+local function raidActive(player)
+	return os.clock() < (raidUntil[player] or 0)
+end
+
+function tryStealCritter(thief, plot, index)
+	local victim = plot.owner
+	local victimData = victim and playerData[victim]
+	local thiefData = playerData[thief]
+	local def = victimData and creaturesById[victimData.creatures[index]]
+	if not def or not thiefData or not thiefData.plot or thiefData.plot == plot then
+		return
+	end
+	if not raidActive(thief) then
+		notify(thief, "You need an active Raid Key to steal!")
+		return
+	end
+	local list = carrying[thief] or {}
+	carrying[thief] = list
+	if #list >= carryMax(thiefData) then
+		notify(thief, "Your hands are full!")
+		return
+	end
+	victimData.creatures[index] = nil
+	renderPedestal(plot, index)
+	table.insert(list, { id = def.id, owner = victim })
+	updateCarryVisual(thief)
+	notify(thief, "You stole " .. def.name .. "! Run back to your base!")
+	notify(victim, thief.Name .. " is stealing your " .. def.name .. "! Freeze them!")
+end
+
+-- Les bases sont protégées : sans clé de raid, on est repoussé dehors
+task.spawn(function()
+	while true do
+		task.wait(0.2)
+		for _, plot in ipairs(plots) do
+			if plot.owner then
+				for _, player in ipairs(Players:GetPlayers()) do
+					local root = player ~= plot.owner and getRoot(player)
+					if root and inPlot(plot, root.Position) and not raidActive(player) then
+						player.Character:PivotTo(at(plot, 0, 4, -32))
+						notify(player, "This base is protected! (a Raid Key lets you in)")
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- Rend un personnage invisible (sauf les créatures qu'il porte), puis visible
+local function setInvisible(character, invisible)
+	for _, descendant in ipairs(character:GetDescendants()) do
+		if (descendant:IsA("BasePart") or descendant:IsA("Decal")) and descendant.Name ~= "HumanoidRootPart"
+			and not descendant:FindFirstAncestor("CarriedCritters") then
+			if invisible then
+				descendant:SetAttribute("OriginalTransparency", descendant.Transparency)
+				descendant.Transparency = 1
+			elseif descendant:GetAttribute("OriginalTransparency") ~= nil then
+				descendant.Transparency = descendant:GetAttribute("OriginalTransparency")
+				descendant:SetAttribute("OriginalTransparency", nil)
+			end
+		end
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = invisible and Enum.HumanoidDisplayDistanceType.None
+			or Enum.HumanoidDisplayDistanceType.Viewer
+	end
+end
+
+local function freezePlayer(target, duration)
+	local root = getRoot(target)
+	if not root then
+		return
+	end
+	root.Anchored = true
+	local ice = makePart(workspace, {
+		Name = "Ice", Size = Vector3.new(5, 7, 5), CFrame = root.CFrame * CFrame.new(0, -0.5, 0),
+		Color = Color3.fromRGB(150, 230, 255), Material = Enum.Material.Ice, Transparency = 0.35,
+		CanCollide = false, CanQuery = false,
+	})
+	task.delay(duration, function()
+		ice:Destroy()
+		if root.Parent then
+			root.Anchored = false
+		end
+	end)
+end
+
+-- Utiliser un objet : renvoie true s'il a servi (il disparaît alors)
+local function useItem(player, item)
+	local character = player.Character
+	local root = getRoot(player)
+	if not character or not root then
+		return false
+	end
+	if item.id == "cloak" then
+		setInvisible(character, true)
+		notify(player, "You are invisible for " .. item.duration .. "s!")
+		task.delay(item.duration, function()
+			if character.Parent then
+				setInvisible(character, false)
+				notify(player, "You are visible again.")
+			end
+		end)
+		return true
+	elseif item.id == "freeze" then
+		local target, best = nil, item.range
+		for _, other in ipairs(Players:GetPlayers()) do
+			local otherRoot = other ~= player and getRoot(other)
+			local humanoid = otherRoot and getHumanoid(other)
+			if humanoid and humanoid.Health > 0 then
+				local distance = (otherRoot.Position - root.Position).Magnitude
+				if distance < best then
+					target, best = other, distance
+				end
+			end
+		end
+		if not target then
+			notify(player, "Nobody close enough to freeze (" .. item.range .. " studs)!")
+			return false
+		end
+		freezePlayer(target, item.duration)
+		notify(player, "You froze " .. target.Name .. "!")
+		notify(target, player.Name .. " froze you!")
+		return true
+	elseif item.id == "raidkey" then
+		raidUntil[player] = os.clock() + item.duration
+		player:SetAttribute("RaidUntil", workspace:GetServerTimeNow() + item.duration)
+		notify(player, "Raid Key active for " .. item.duration .. "s: enter a base and hold E on a critter to STEAL it!")
+		return true
+	end
+	return false
+end
+
+local function hasItem(player, itemId)
+	for _, container in ipairs({ player:FindFirstChild("Backpack"), player.Character }) do
+		if container then
+			for _, child in ipairs(container:GetChildren()) do
+				if child:IsA("Tool") and child:GetAttribute("ItemId") == itemId then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function giveItem(player, item)
+	local tool = Instance.new("Tool")
+	tool.Name = item.name
+	tool.ToolTip = item.description
+	tool.CanBeDropped = false
+	tool:SetAttribute("ItemId", item.id)
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.6, 1.4, 0.6)
+	handle.Color = item.color
+	handle.Material = Enum.Material.Neon
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Parent = tool
+	local busy = false
+	tool.Activated:Connect(function()
+		if busy then
+			return
+		end
+		busy = true
+		if useItem(player, item) then
+			tool:Destroy()
+		end
+		busy = false
+	end)
+	tool.Parent = player:FindFirstChild("Backpack")
+end
+
+local function buyItem(player, item)
+	local data = playerData[player]
+	local cash = getCash(player)
+	if not data or not cash then
+		return
+	end
+	local needed = rarityIndex[item.requires] or 1
+	if (data.best or 0) < needed then
+		notify(player, item.name .. " is locked: get a " .. raritiesById[item.requires].name .. " critter first!")
+		return
+	end
+	if hasItem(player, item.id) then
+		notify(player, "You already have a " .. item.name .. ". Use it first!")
+		return
+	end
+	if cash.Value < item.price then
+		notify(player, "Not enough cash! " .. item.name .. " costs $" .. formatMoney(item.price))
+		return
+	end
+	cash.Value -= item.price
+	giveItem(player, item)
+	notify(player, "You bought a " .. item.name .. "! Equip it (bottom of the screen) and click to use.")
+end
+
+-- La boutique, au fond de la zone des bases
+do
+	local shopX = -200
+	makePart(map, {
+		Name = "ShopFloor", Size = Vector3.new(18, 0.4, 34), CFrame = CFrame.new(shopX, 0.2, 0),
+		Color = Color3.fromRGB(40, 40, 50), Material = Enum.Material.Metal,
+	})
+	makePart(map, {
+		Name = "ShopRoof", Size = Vector3.new(18, 1, 34), CFrame = CFrame.new(shopX, 14, 0),
+		Color = Color3.fromRGB(80, 60, 160), Material = Enum.Material.SmoothPlastic,
+	})
+	for _, z in ipairs({ -16, 16 }) do
+		for _, x in ipairs({ -8, 8 }) do
+			makePart(map, {
+				Name = "ShopPost", Size = Vector3.new(1, 14, 1), CFrame = CFrame.new(shopX + x, 7, z),
+				Color = Color3.fromRGB(255, 200, 40), Material = Enum.Material.Neon,
+			})
+		end
+	end
+	local sign = makePart(map, {
+		Name = "ShopSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(shopX, 18, 0),
+		Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
+	})
+	createBillboard(sign, "ITEM SHOP", "Unlocked by your rarest critter", 0, 18, Color3.fromRGB(255, 200, 40), 250)
+	for i, item in ipairs(Config.Items) do
+		local z = (i - (#Config.Items + 1) / 2) * 10
+		local stand = makePart(map, {
+			Name = "Stand", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3, 4, 4),
+			CFrame = vertical(CFrame.new(shopX, 1.5, z)), Color = Color3.fromRGB(30, 30, 35), Material = Enum.Material.Metal,
+		})
+		local orb = makePart(map, {
+			Name = "ItemOrb", Shape = Enum.PartType.Ball, Size = Vector3.one * 2, CFrame = CFrame.new(shopX, 4.5, z),
+			Color = item.color, Material = Enum.Material.Neon, CanCollide = false,
+		})
+		createBillboard(orb, item.name, "$" .. formatMoney(item.price) .. "  ·  needs " .. raritiesById[item.requires].name,
+			2.5, 10, item.color, 60)
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Buy $" .. formatMoney(item.price)
+		prompt.ObjectText = item.name .. " - " .. item.description
+		prompt.HoldDuration = 0.4
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = stand
+		prompt.Triggered:Connect(function(player)
+			buyItem(player, item)
+		end)
+	end
+end
 
 -- ============================================================
 -- Sauvegarde
@@ -1359,7 +1791,7 @@ if Config.SaveEnabled then
 end
 
 local function loadData(player)
-	local data = { creatures = {}, upgrades = {}, cash = Config.StartingCash, loaded = true }
+	local data = { creatures = {}, upgrades = {}, cash = Config.StartingCash, best = 0, loaded = true }
 	if not dataStore then
 		return data
 	end
@@ -1371,6 +1803,7 @@ local function loadData(player)
 		data.loaded = false -- on ne sauvegardera pas : sinon on écraserait sa vraie partie
 	elseif type(saved) == "table" then
 		data.cash = tonumber(saved.cash) or data.cash
+		data.best = tonumber(saved.best) or 0
 		if type(saved.upgrades) == "table" then
 			for _, upgrade in ipairs(Config.Upgrades) do
 				local level = tonumber(saved.upgrades[upgrade.id])
@@ -1405,6 +1838,7 @@ local function saveData(player)
 			cash = cash.Value,
 			upgrades = data.upgrades,
 			creatures = creatures,
+			best = data.best,
 		})
 	end)
 	if not ok then
@@ -1441,7 +1875,7 @@ local function onCharacterAdded(player, character)
 		end)
 	end
 	humanoid.Died:Connect(function()
-		carrying[player] = {}
+		loseCarried(player)
 		updateCarryAttributes(player)
 		task.delay(3, function()
 			if player.Character == character then
@@ -1502,8 +1936,10 @@ local function onPlayerRemoving(player)
 		plot.padFolder:ClearAllChildren()
 		setBillboard(plot.sign, "FREE BASE", "")
 	end
+	loseCarried(player) -- les créatures volées qu'il portait reviennent à leur propriétaire
 	playerData[player] = nil
 	carrying[player] = nil
+	raidUntil[player] = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
@@ -1528,6 +1964,7 @@ task.spawn(function()
 				local income = 0
 				for _, id in pairs(data.creatures) do
 					local def = creaturesById[id]
+					data.best = math.max(data.best or 0, def and rarityIndex[def.rarity] or 0)
 					if def then
 						income += def.income
 					end
@@ -1569,6 +2006,14 @@ if RunService:IsStudio() then
 			if workspace:GetAttribute("WaveState") ~= "active" then
 				workspace:SetAttribute("WaveState", "warning")
 				workspace:SetAttribute("WaveNextAt", workspace:GetServerTimeNow() + 3)
+			end
+		elseif command == "spawndivine" then
+			spawnDivine()
+		elseif command == "unlockitems" then
+			local data = playerData[player]
+			if data then
+				data.best = #Config.Rarities
+				notify(player, "Test: all items unlocked")
 			end
 		elseif command == "spawnrarity" then
 			-- Fait apparaître une créature de cette rareté au début du chemin
@@ -1720,110 +2165,248 @@ ReplicatedStorage:WaitForChild("Notify").OnClientEvent:Connect(function(text)
 end)
 
 -- ============================================================
+-- Sons et musique
+--   SoundService > Music  : tes musiques (jouées au hasard, en boucle)
+--   SoundService > Sounds : "Siren", "Wave", "Divine" pour remplacer les sons par défaut
+-- ============================================================
+local SoundService = game:GetService("SoundService")
+
+local function getSound(name, fallbackId, volume, speed)
+	local folder = SoundService:FindFirstChild("Sounds")
+	local custom = folder and folder:FindFirstChild(name)
+	local sound
+	if custom and custom:IsA("Sound") then
+		sound = custom:Clone()
+	else
+		sound = Instance.new("Sound")
+		sound.SoundId = fallbackId
+		sound.Volume = volume
+		sound.PlaybackSpeed = speed or 1
+	end
+	sound.Name = name
+	sound.Parent = SoundService
+	return sound
+end
+
+local sirenSound = getSound("Siren", "rbxasset://sounds/electronicpingshort.wav", 0.8, 0.55)
+local waveSound = getSound("Wave", "rbxasset://sounds/action_swim.mp3", 0, 0.35)
+waveSound.Looped = true
+local divineSound = getSound("Divine", "rbxasset://sounds/electronicpingshort.wav", 1, 1.6)
+
+-- Musique d'ambiance : chaque son du dossier Music, dans un ordre au hasard
+local music = nil
+task.spawn(function()
+	local folder = SoundService:WaitForChild("Music", 5)
+	if not folder then
+		return
+	end
+	local tracks = {}
+	for _, child in ipairs(folder:GetChildren()) do
+		if child:IsA("Sound") then
+			table.insert(tracks, child)
+		end
+	end
+	if #tracks == 0 then
+		return
+	end
+	while true do
+		local track = tracks[math.random(#tracks)]
+		music = track
+		track.Looped = false
+		track:Play()
+		if track.TimeLength == 0 then
+			track.Loaded:Wait()
+		end
+		track.Ended:Wait()
+		task.wait(1)
+	end
+end)
+
+-- ============================================================
+-- Ambiance : le ciel s'assombrit quand le tsunami arrive
+-- ============================================================
+local Lighting = game:GetService("Lighting")
+local mood = Instance.new("ColorCorrectionEffect")
+mood.Name = "TsunamiMood"
+mood.Parent = Lighting
+local currentMood = nil
+local function setMood(name)
+	if currentMood == name then
+		return
+	end
+	currentMood = name
+	local goal
+	if name == "storm" then
+		goal = { TintColor = Color3.fromRGB(165, 185, 225), Brightness = -0.1, Contrast = 0.15, Saturation = -0.3 }
+	else
+		goal = { TintColor = Color3.new(1, 1, 1), Brightness = 0, Contrast = 0, Saturation = 0 }
+	end
+	TweenService:Create(mood, TweenInfo.new(name == "storm" and 3 or 5), goal):Play()
+end
+
+-- Éclaboussure bleue à l'écran quand la vague passe tout près
+local splash = Instance.new("Frame")
+splash.Size = UDim2.fromScale(1, 1)
+splash.BackgroundColor3 = Color3.fromRGB(40, 120, 220)
+splash.BackgroundTransparency = 1
+splash.BorderSizePixel = 0
+splash.ZIndex = 0
+splash.Parent = gui
+
+-- ============================================================
 -- La vague : dessinée ici (plus fluide), le serveur calcule la même position
 -- ============================================================
-local waveModel = nil
+local wave = nil -- { model, parts... }
+
+local function wavePart(model, name, size, props, class)
+	local part = Instance.new(class or "Part")
+	part.Name = name
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Size = size
+	part.Material = Enum.Material.SmoothPlastic
+	for key, value in pairs(props) do
+		part[key] = value
+	end
+	part.Parent = model
+	return part
+end
+
+local function addSpray(part, rate, size, speed)
+	local spray = Instance.new("ParticleEmitter")
+	spray.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	spray.Color = ColorSequence.new(Color3.fromRGB(235, 248, 255))
+	spray.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, size * 2.2) })
+	spray.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(1, 1) })
+	spray.Lifetime = NumberRange.new(0.8, 1.6)
+	spray.Rate = rate
+	spray.Speed = NumberRange.new(speed * 0.5, speed)
+	spray.SpreadAngle = Vector2.new(35, 35)
+	spray.EmissionDirection = Enum.NormalId.Top
+	spray.Acceleration = Vector3.new(0, -20, 0)
+	spray.Parent = part
+	return spray
+end
+
+local CURL_SEGMENTS = 7
 
 local function buildWave(height, color)
 	local model = Instance.new("Model")
 	model.Name = "Tsunami"
 	local width = Config.PathWidth + 60
-	local function wavePart(name, size, props)
-		local part = Instance.new("Part")
-		part.Name = name
-		part.Anchored = true
-		part.CanCollide = false
-		part.CanQuery = false
-		part.CanTouch = false
-		part.CastShadow = false
-		part.Size = size
-		for key, value in pairs(props) do
-			part[key] = value
-		end
-		part.Parent = model
-		return part
+	local thickness = Config.WaveThickness
+	local light = color:Lerp(Color3.fromRGB(150, 220, 255), 0.45)
+	local w = { model = model, height = height, curl = {} }
+	w.body = wavePart(model, "Body", Vector3.new(thickness, height + 12, width), { Color = color, Transparency = 0.05 })
+	-- Couche animée (reflets qui bougent) par-dessus l'eau
+	w.shimmer = wavePart(model, "Shimmer", Vector3.new(thickness + 0.6, height + 12.6, width + 0.6), {
+		Color = light, Material = Enum.Material.ForceField, Transparency = 0,
+	})
+	-- La crête qui s'enroule vers l'avant
+	local radius = math.max(8, height * 0.22)
+	w.radius = radius
+	local segment = radius * 2 * math.pi * (150 / 360) / CURL_SEGMENTS + 1
+	for i = 1, CURL_SEGMENTS do
+		w.curl[i] = wavePart(model, "Curl", Vector3.new(segment, 5, width), {
+			Color = color:Lerp(light, i / CURL_SEGMENTS), Transparency = 0.05,
+		})
 	end
-	local body = wavePart("Body", Vector3.new(Config.WaveThickness, height + 12, width), {
-		Color = color, Material = Enum.Material.SmoothPlastic, Transparency = 0.2,
-	})
-	local crest = wavePart("Crest", Vector3.new(Config.WaveThickness * 0.7, 4, width), {
-		Color = Color3.fromRGB(235, 250, 255), Material = Enum.Material.SmoothPlastic,
-	})
-	local lip = Instance.new("WedgePart")
-	lip.Name = "Lip"
-	lip.Anchored = true
-	lip.CanCollide = false
-	lip.CanQuery = false
-	lip.CanTouch = false
-	lip.CastShadow = false
-	lip.Size = Vector3.new(width, 10, 12)
-	lip.Color = Color3.fromRGB(220, 245, 255)
-	lip.Transparency = 0.1
-	lip.Parent = model
-	local foam = Instance.new("ParticleEmitter")
-	foam.Texture = "rbxasset://textures/particles/smoke_main.dds"
-	foam.Color = ColorSequence.new(Color3.new(1, 1, 1))
-	foam.Size = NumberSequence.new(6, 12)
-	foam.Transparency = NumberSequence.new(0.3, 1)
-	foam.Lifetime = NumberRange.new(0.8, 1.4)
-	foam.Rate = 80
-	foam.Speed = NumberRange.new(8, 16)
-	foam.SpreadAngle = Vector2.new(40, 40)
-	foam.Parent = crest
+	w.foam = wavePart(model, "Foam", Vector3.new(thickness * 0.8, 3, width), { Color = Color3.fromRGB(240, 250, 255) })
+	addSpray(w.foam, 120, 7, 30)
+	addSpray(w.curl[CURL_SEGMENTS], 80, 6, 18)
+	w.ground = wavePart(model, "GroundSpray", Vector3.new(2, 2, width), { Transparency = 1 })
+	addSpray(w.ground, 150, 9, 40)
 	model.Parent = workspace
-	return model, body, crest, lip
+	return w
 end
 
-local waveParts = {}
+local function placeWave(w, front, now)
+	local h = w.height
+	local t = Config.WaveThickness
+	local bob = math.sin(now * 2.5) * 1.2
+	w.body.CFrame = CFrame.new(front + t / 2, (h + 12) / 2 - 12 + bob, 0)
+	w.shimmer.CFrame = w.body.CFrame
+	-- Crête : un quart de cercle au sommet, penché vers l'avant (vers la base)
+	local r = w.radius
+	local center = Vector3.new(front + r * 0.3, h - r + bob, 0)
+	for i, part in ipairs(w.curl) do
+		local angle = math.rad(150) * (i - 0.5) / CURL_SEGMENTS
+		local position = center + Vector3.new(-math.sin(angle) * r, math.cos(angle) * r, 0)
+		part.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, angle)
+	end
+	w.foam.CFrame = CFrame.new(front + t * 0.45, h + 1.5 + bob, 0)
+	w.ground.CFrame = CFrame.new(front - 2, 0.5, 0)
+end
+
+local lastSiren = 0
+local lastSplash = 0
+local lastDivine = workspace:GetAttribute("DivineAt") or 0
 
 RunService.RenderStepped:Connect(function()
 	local state = workspace:GetAttribute("WaveState")
 	local now = workspace:GetServerTimeNow()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+	setMood((state == "warning" or state == "active") and "storm" or "calm")
+	if music then
+		music.Volume = (state == "active") and 0.08 or 0.3
+	end
+
 	if state == "active" then
 		local height = workspace:GetAttribute("WaveHeight") or 40
-		if not waveModel then
-			local model, body, crest, lip = buildWave(height, workspace:GetAttribute("WaveColor") or Color3.fromRGB(40, 120, 220))
-			waveModel = model
-			waveParts = { body = body, crest = crest, lip = lip, height = height }
+		if not wave then
+			wave = buildWave(height, workspace:GetAttribute("WaveColor") or Color3.fromRGB(40, 120, 220))
+			waveSound:Play()
 		end
 		local speed = workspace:GetAttribute("WaveSpeed") or 40
 		local front = Config.WaveStartX - speed * (now - (workspace:GetAttribute("WaveStart") or now))
-		local h = waveParts.height
-		local wobble = math.sin(now * 3) * 0.8
-		waveParts.body.CFrame = CFrame.new(front + Config.WaveThickness / 2, (h + 12) / 2 - 12 + wobble, 0)
-		waveParts.crest.CFrame = CFrame.new(front + Config.WaveThickness * 0.35, h + 2 + wobble, 0)
-		-- La lèvre de la vague, penchée vers l'avant
-		waveParts.lip.CFrame = CFrame.new(front - 4, h - 3 + wobble, 0) * CFrame.Angles(0, math.rad(90), 0)
+		placeWave(wave, front, now)
 
-		-- La caméra tremble quand la vague est proche
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if root and humanoid then
-			local distance = math.abs(root.Position.X - front)
-			if distance < 120 then
-				local strength = (1 - distance / 120) * 0.35
-				humanoid.CameraOffset = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * strength * 2
+		local distance = root and math.abs(root.Position.X - front) or 1000
+		waveSound.Volume = math.clamp(3 * (1 - distance / 400), 0.3, 3)
+		-- La caméra tremble de plus en plus fort quand la vague approche
+		if humanoid then
+			if distance < 200 then
+				local strength = (1 - distance / 200) ^ 2 * 1.6
+				humanoid.CameraOffset = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * strength
 			else
 				humanoid.CameraOffset = Vector3.zero
 			end
 		end
-	elseif waveModel then
-		waveModel:Destroy()
-		waveModel = nil
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if distance < 12 and now - lastSplash > 1.5 then
+			lastSplash = now
+			splash.BackgroundTransparency = 0.35
+			TweenService:Create(splash, TweenInfo.new(1.2), { BackgroundTransparency = 1 }):Play()
+		end
+		-- La vague éclair fait clignoter le ciel
+		if (workspace:GetAttribute("WaveName") or ""):find("LIGHTNING") and math.random() < 0.03 then
+			mood.Brightness = 0.5
+			TweenService:Create(mood, TweenInfo.new(0.3), { Brightness = -0.1 }):Play()
+		end
+	elseif wave then
+		wave.model:Destroy()
+		wave = nil
+		waveSound:Stop()
 		if humanoid then
 			humanoid.CameraOffset = Vector3.zero
 		end
 	end
 
-	-- Bandeau
+	-- Bandeau + sirène
 	if state == "warning" then
 		local left = math.max(0, math.ceil((workspace:GetAttribute("WaveNextAt") or now) - now))
 		bannerLabel.Text = "TSUNAMI IN " .. left .. "s - HIDE IN A TRENCH!"
 		local flash = math.floor(now * 4) % 2 == 0
 		banner.BackgroundColor3 = flash and Color3.fromRGB(200, 30, 40) or Color3.fromRGB(90, 10, 20)
+		if now - lastSiren > 0.5 then
+			lastSiren = now
+			sirenSound:Play()
+		end
 	elseif state == "active" then
 		bannerLabel.Text = tostring(workspace:GetAttribute("WaveName") or "TSUNAMI") .. "! STAY LOW!"
 		banner.BackgroundColor3 = Color3.fromRGB(20, 80, 180)
@@ -1831,6 +2414,65 @@ RunService.RenderStepped:Connect(function()
 		local left = math.max(0, math.ceil((workspace:GetAttribute("WaveNextAt") or now) - now))
 		bannerLabel.Text = "Next tsunami in " .. left .. "s"
 		banner.BackgroundColor3 = Color3.fromRGB(15, 30, 50)
+	end
+end)
+
+-- ============================================================
+-- Créature DIVINE : grosse annonce arc-en-ciel + aura qui change de couleur
+-- ============================================================
+local divineLabel = textLabel(gui, {
+	AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.3), Size = UDim2.fromScale(0.8, 0.09),
+	Visible = false, TextStrokeTransparency = 0,
+})
+local divineUntil = 0
+
+workspace:GetAttributeChangedSignal("DivineAt"):Connect(function()
+	local at = workspace:GetAttribute("DivineAt") or 0
+	if at <= lastDivine then
+		return
+	end
+	lastDivine = at
+	divineLabel.Text = "A DIVINE " .. tostring(workspace:GetAttribute("DivineName")) .. " APPEARED NEAR THE BASES!"
+	divineUntil = os.clock() + 7
+	task.spawn(function()
+		for _ = 1, 4 do
+			divineSound:Play()
+			task.wait(0.25)
+		end
+	end)
+end)
+
+RunService.Heartbeat:Connect(function()
+	local hue = (os.clock() * 0.3) % 1
+	local rainbow = Color3.fromHSV(hue, 0.7, 1)
+	divineLabel.Visible = os.clock() < divineUntil
+	if divineLabel.Visible then
+		divineLabel.TextColor3 = rainbow
+		divineLabel.Rotation = math.sin(os.clock() * 6) * 3
+	end
+	for _, model in ipairs(CollectionService:GetTagged("Divine")) do
+		for _, part in ipairs(model:GetChildren()) do
+			if part.Name == "Aura" and part:IsA("BasePart") then
+				part.Color = rainbow
+			end
+		end
+		local light = model.PrimaryPart and model.PrimaryPart:FindFirstChildOfClass("PointLight")
+		if light then
+			light.Color = rainbow
+		end
+	end
+end)
+
+-- Temps restant de la clé de raid (sous le compteur de créatures portées)
+local raidLabel = textLabel(gui, {
+	AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -114), Size = UDim2.fromOffset(260, 24),
+	Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(255, 200, 40), Visible = false,
+})
+RunService.Heartbeat:Connect(function()
+	local left = (player:GetAttribute("RaidUntil") or 0) - workspace:GetServerTimeNow()
+	raidLabel.Visible = left > 0
+	if left > 0 then
+		raidLabel.Text = "RAID KEY: " .. math.ceil(left) .. "s"
 	end
 end)
 
@@ -1867,18 +2509,24 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ============================================================
--- Touche E « Sell » : seulement sur tes propres créatures
+-- Touches E : « Sell » seulement sur tes créatures, « STEAL » seulement chez les autres
 -- ============================================================
-local function filterPrompt(prompt)
+local function filterPrompt(prompt, ownerOnly)
 	local function apply()
-		prompt.Enabled = prompt:GetAttribute("OwnerId") == player.UserId
+		local mine = prompt:GetAttribute("OwnerId") == player.UserId
+		prompt.Enabled = (ownerOnly and mine) or (not ownerOnly and not mine)
 	end
 	apply()
 	prompt:GetAttributeChangedSignal("OwnerId"):Connect(apply)
 end
-CollectionService:GetInstanceAddedSignal("OwnerOnly"):Connect(filterPrompt)
-for _, prompt in ipairs(CollectionService:GetTagged("OwnerOnly")) do
-	filterPrompt(prompt)
+for _, tag in ipairs({ "OwnerOnly", "ThiefOnly" }) do
+	local ownerOnly = tag == "OwnerOnly"
+	CollectionService:GetInstanceAddedSignal(tag):Connect(function(prompt)
+		filterPrompt(prompt, ownerOnly)
+	end)
+	for _, prompt in ipairs(CollectionService:GetTagged(tag)) do
+		filterPrompt(prompt, ownerOnly)
+	end
 end
 
 -- ============================================================
@@ -1890,7 +2538,7 @@ if RunService:IsStudio() then
 		local panel = Instance.new("Frame")
 		panel.AnchorPoint = Vector2.new(1, 0.5)
 		panel.Position = UDim2.new(1, -12, 0.5, 0)
-		panel.Size = UDim2.fromOffset(150, 230)
+		panel.Size = UDim2.fromOffset(150, 300)
 		panel.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 		panel.BackgroundTransparency = 0.25
 		panel.Parent = gui
@@ -1922,6 +2570,8 @@ if RunService:IsStudio() then
 		addButton("Wave now", "wavenow", 0)
 		addButton("Spawn Legendary", "spawnrarity", 4)
 		addButton("Spawn SECRET", "spawnrarity", 6)
+		addButton("Spawn DIVINE", "spawndivine", 0)
+		addButton("Unlock items", "unlockitems", 0)
 	end
 end
 ]]></string>

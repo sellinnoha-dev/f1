@@ -547,7 +547,7 @@ createBillboard(safeSign, "SAFE ZONE", "The wave never comes here", 0, 16, Color
 -- ============================================================
 
 local playerData = {} -- [player] = { creatures = {[index] = id}, upgrades = {}, plot, loaded }
-local carrying = {} -- [player] = { ids... }
+local carrying = {} -- [player] = { { id, owner = joueur volé ou nil }... }
 local plots = {}
 
 local plotsFolder = Instance.new("Folder")
@@ -626,6 +626,12 @@ local function createPlot(index)
 			Color = Color3.fromRGB(240, 240, 245), Material = Enum.Material.SmoothPlastic,
 		})
 	end
+	-- Barrière de protection à l'entrée (seule une Raid Key permet de passer)
+	plot.barrier = makePart(model, {
+		Name = "Barrier", Size = Vector3.new(44, 10, 0.4), CFrame = at(plot, 0, 5, -22.5),
+		Color = plot.color, Material = Enum.Material.ForceField, Transparency = 0.2,
+		CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+	})
 	local signPart = makePart(model, {
 		Name = "Sign", Size = Vector3.new(1, 1, 1), CFrame = at(plot, 0, 15, 22),
 		Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
@@ -670,6 +676,7 @@ local function inPlot(plot, position)
 end
 
 local renderPedestal -- défini juste en dessous
+local tryStealCritter -- défini plus bas (partie "Objets et vol")
 
 local function sellCreature(plot, index)
 	local owner = plot.owner
@@ -737,6 +744,22 @@ function renderPedestal(plot, index)
 	prompt.Triggered:Connect(function(player)
 		if player == plot.owner then
 			sellCreature(plot, index)
+		end
+	end)
+
+	-- Les autres joueurs (avec une Raid Key active) peuvent la voler
+	local stealPrompt = Instance.new("ProximityPrompt")
+	stealPrompt.ActionText = "STEAL"
+	stealPrompt.ObjectText = def.name
+	stealPrompt.HoldDuration = 1.5
+	stealPrompt.MaxActivationDistance = 9
+	stealPrompt.RequiresLineOfSight = false
+	stealPrompt:SetAttribute("OwnerId", plot.owner.UserId)
+	CollectionService:AddTag(stealPrompt, "ThiefOnly")
+	stealPrompt.Parent = base
+	stealPrompt.Triggered:Connect(function(player)
+		if player ~= plot.owner then
+			tryStealCritter(player, plot, index)
 		end
 	end)
 end
@@ -872,8 +895,8 @@ local function updateCarryVisual(player)
 	holder.Name = "CarriedCritters"
 	holder.Parent = character
 	local y = 1.2
-	for _, id in ipairs(list) do
-		local def = creaturesById[id]
+	for _, carried in ipairs(list) do
+		local def = creaturesById[carried.id]
 		local creature = makeCreatureModel(def)
 		creature:ScaleTo(0.6)
 		local height = (creature:GetAttribute("Height") or 3) * 0.6
@@ -906,22 +929,39 @@ local function grabCreature(player, entry)
 		return
 	end
 	removeGroundCreature(entry)
-	table.insert(list, entry.def.id)
+	table.insert(list, { id = entry.def.id })
 	updateCarryVisual(player)
 	local rarity = raritiesById[entry.def.rarity]
 	notify(player, "Got " .. entry.def.name .. " (" .. rarity.name .. ")! Run back to your base!")
-	if rarityIndex[entry.def.rarity] >= 5 then
+	if entry.divine then
+		notifyAll(player.Name .. " caught the DIVINE " .. entry.def.name .. "!!!")
+		workspace:SetAttribute("DivineAt", 0)
+	elseif rarityIndex[entry.def.rarity] >= 5 then
 		notifyAll(player.Name .. " grabbed a " .. rarity.name .. " " .. entry.def.name .. "!")
 	end
 end
 
--- Tire une créature pour une zone (parfois de la rareté au-dessus)
+-- Tire une créature pour une zone selon les chances de chaque rareté
 local function rollCreature(zoneIndex)
-	local level = zoneIndex
-	if math.random() < Config.BetterRarityChance and Config.Rarities[level + 1] then
-		level += 1
+	local chances = Config.Zones[zoneIndex].chances or { [Config.Zones[zoneIndex].rarity] = 1 }
+	local total = 0
+	for _, weight in pairs(chances) do
+		total += weight
 	end
-	for i = level, 1, -1 do
+	local pick = math.random() * total
+	local rarityId = Config.Zones[zoneIndex].rarity
+	for _, rarity in ipairs(Config.Rarities) do
+		local weight = chances[rarity.id]
+		if weight then
+			pick -= weight
+			if pick <= 0 then
+				rarityId = rarity.id
+				break
+			end
+		end
+	end
+	-- Aucune créature de cette rareté ? On descend d'un cran
+	for i = rarityIndex[rarityId], 1, -1 do
 		local list = creaturesByRarity[Config.Rarities[i].id]
 		if #list > 0 then
 			return list[math.random(#list)]
@@ -939,11 +979,11 @@ local function nearTrench(x, margin)
 	return false
 end
 
-local function spawnCreature(zoneIndex, forcedDef)
+local function spawnCreature(zoneIndex, forcedDef, fromX, toX)
 	local zone = Config.Zones[zoneIndex]
 	local x
 	for _ = 1, 10 do
-		local candidate = math.random(zone.from + 12, zone.to - 6)
+		local candidate = math.random(fromX or (zone.from + 12), toX or (zone.to - 6))
 		if not nearTrench(candidate, 6) then
 			x = candidate
 			break
@@ -984,16 +1024,79 @@ local function zoneCount(zoneIndex)
 	return count
 end
 
-task.spawn(function()
-	for zoneIndex in ipairs(Config.Zones) do
-		for _ = 1, Config.CreaturesPerZone do
+-- Remplit toutes les zones (au lancement et après chaque vague : nouvelles créatures)
+local function refillAll()
+	for zoneIndex, zone in ipairs(Config.Zones) do
+		for _ = zoneCount(zoneIndex) + 1, zone.count or 4 do
 			spawnCreature(zoneIndex)
 		end
 	end
+end
+
+-- La créature DIVINE : aura, colonne de lumière, annonce à tout le serveur
+local function spawnDivine(forcedDef)
+	local list = creaturesByRarity.divine
+	if not list or #list == 0 then
+		return
+	end
+	local def = forcedDef or list[math.random(#list)]
+	local entry = spawnCreature(1, def, 25, 70)
+	if not entry then
+		return
+	end
+	entry.divine = true
+	local root = entry.model.PrimaryPart
+	local function auraPart(props)
+		props.Anchored = false
+		props.CanCollide = false
+		props.CanTouch = false
+		props.CanQuery = false
+		props.CastShadow = false
+		props.Massless = true
+		local part = makePart(entry.model, props)
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = root
+		weld.Part1 = part
+		weld.Parent = part
+		return part
+	end
+	local center = root.CFrame
+	auraPart({ Name = "Aura", Shape = Enum.PartType.Ball, Size = Vector3.one * 11, CFrame = center,
+		Material = Enum.Material.ForceField, Color = Color3.fromRGB(255, 120, 255), Transparency = 0 })
+	auraPart({ Name = "Aura", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 13, 13),
+		CFrame = vertical(CFrame.new(center.Position - Vector3.new(0, 2, 0))), Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 255, 255), Transparency = 0.3 })
+	auraPart({ Name = "Aura", Shape = Enum.PartType.Cylinder, Size = Vector3.new(300, 3, 3),
+		CFrame = vertical(CFrame.new(center.Position + Vector3.new(0, 150, 0))), Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 255, 255), Transparency = 0.55 })
+	local light = Instance.new("PointLight")
+	light.Range = 30
+	light.Brightness = 5
+	light.Parent = root
+	for _, texture in ipairs({ "rbxasset://textures/particles/sparkles_main.dds", "rbxasset://textures/particles/fire_main.dds" }) do
+		local particles = Instance.new("ParticleEmitter")
+		particles.Texture = texture
+		particles.Rate = 25
+		particles.Lifetime = NumberRange.new(1, 2)
+		particles.Speed = NumberRange.new(3, 8)
+		particles.SpreadAngle = Vector2.new(180, 180)
+		particles.Size = NumberSequence.new(1.2, 0)
+		particles.LightEmission = 1
+		particles.Parent = root
+	end
+	CollectionService:AddTag(entry.model, "Divine")
+	workspace:SetAttribute("DivineName", def.name)
+	workspace:SetAttribute("DivineAt", workspace:GetServerTimeNow())
+	notifyAll("A DIVINE " .. def.name .. " appeared right in front of the bases!!!")
+	return entry
+end
+
+task.spawn(function()
+	refillAll()
 	while true do
 		task.wait(Config.SpawnInterval)
-		for zoneIndex in ipairs(Config.Zones) do
-			if zoneCount(zoneIndex) < Config.CreaturesPerZone then
+		for zoneIndex, zone in ipairs(Config.Zones) do
+			if zoneCount(zoneIndex) < (zone.count or 4) then
 				spawnCreature(zoneIndex)
 			end
 		end
@@ -1019,12 +1122,17 @@ local function deliver(player)
 		if not free then
 			break
 		end
-		local def = creaturesById[list[i]]
+		local carried = list[i]
+		local def = creaturesById[carried.id]
 		data.creatures[free] = def.id
 		table.remove(list, i)
 		renderPedestal(data.plot, free)
 		placed += 1
+		data.best = math.max(data.best or 0, rarityIndex[def.rarity])
 		notify(player, def.name .. " is now in your base: +$" .. formatMoney(def.income) .. "/s")
+		if carried.owner then
+			notify(carried.owner, player.Name .. " stole your " .. def.name .. "!")
+		end
 	end
 	if #list > 0 and not data.fullWarned then
 		data.fullWarned = true
@@ -1077,12 +1185,38 @@ local function waveFront()
 	return Config.WaveStartX - speed * (workspace:GetServerTimeNow() - start)
 end
 
+-- Rend une créature à son propriétaire (place libre, sinon il touche son prix de vente)
+local function giveBack(owner, id)
+	local data = owner and owner.Parent and playerData[owner]
+	local def = creaturesById[id]
+	if not data or not def then
+		return
+	end
+	for index = 1, pedestalCount(data) do
+		if not data.creatures[index] then
+			data.creatures[index] = id
+			renderPedestal(data.plot, index)
+			notify(owner, "Your " .. def.name .. " is back!")
+			return
+		end
+	end
+	local cash = getCash(owner)
+	if cash then
+		cash.Value += def.income * Config.SellMultiplier
+	end
+end
+
 local function loseCarried(player)
-	if carrying[player] and #carrying[player] > 0 then
-		local count = #carrying[player]
+	local list = carrying[player]
+	if list and #list > 0 then
 		carrying[player] = {}
+		for _, carried in ipairs(list) do
+			if carried.owner then
+				giveBack(carried.owner, carried.id)
+			end
+		end
 		updateCarryVisual(player)
-		notify(player, "You lost " .. count .. " critter(s)!")
+		notify(player, "You lost " .. #list .. " critter(s)!")
 	end
 end
 
@@ -1135,9 +1269,275 @@ RunService.Heartbeat:Connect(function()
 		if front < -10 then
 			workspace:SetAttribute("WaveState", "calm")
 			workspace:SetAttribute("WaveNextAt", now + Config.WaveInterval)
+			-- Après la vague : toutes nouvelles créatures, et peut-être une DIVINE
+			task.spawn(function()
+				refillAll()
+				if math.random() < Config.DivineChance then
+					spawnDivine()
+				end
+			end)
 		end
 	end
 end)
+
+
+-- ============================================================
+-- Objets et vol : cape d'invisibilité, rayon gelant, clé de raid
+-- ============================================================
+
+local raidUntil = {} -- [joueur] = os.clock() de fin de la clé de raid
+local itemsById = {}
+for _, item in ipairs(Config.Items) do
+	itemsById[item.id] = item
+end
+
+local function raidActive(player)
+	return os.clock() < (raidUntil[player] or 0)
+end
+
+function tryStealCritter(thief, plot, index)
+	local victim = plot.owner
+	local victimData = victim and playerData[victim]
+	local thiefData = playerData[thief]
+	local def = victimData and creaturesById[victimData.creatures[index]]
+	if not def or not thiefData or not thiefData.plot or thiefData.plot == plot then
+		return
+	end
+	if not raidActive(thief) then
+		notify(thief, "You need an active Raid Key to steal!")
+		return
+	end
+	local list = carrying[thief] or {}
+	carrying[thief] = list
+	if #list >= carryMax(thiefData) then
+		notify(thief, "Your hands are full!")
+		return
+	end
+	victimData.creatures[index] = nil
+	renderPedestal(plot, index)
+	table.insert(list, { id = def.id, owner = victim })
+	updateCarryVisual(thief)
+	notify(thief, "You stole " .. def.name .. "! Run back to your base!")
+	notify(victim, thief.Name .. " is stealing your " .. def.name .. "! Freeze them!")
+end
+
+-- Les bases sont protégées : sans clé de raid, on est repoussé dehors
+task.spawn(function()
+	while true do
+		task.wait(0.2)
+		for _, plot in ipairs(plots) do
+			if plot.owner then
+				for _, player in ipairs(Players:GetPlayers()) do
+					local root = player ~= plot.owner and getRoot(player)
+					if root and inPlot(plot, root.Position) and not raidActive(player) then
+						player.Character:PivotTo(at(plot, 0, 4, -32))
+						notify(player, "This base is protected! (a Raid Key lets you in)")
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- Rend un personnage invisible (sauf les créatures qu'il porte), puis visible
+local function setInvisible(character, invisible)
+	for _, descendant in ipairs(character:GetDescendants()) do
+		if (descendant:IsA("BasePart") or descendant:IsA("Decal")) and descendant.Name ~= "HumanoidRootPart"
+			and not descendant:FindFirstAncestor("CarriedCritters") then
+			if invisible then
+				descendant:SetAttribute("OriginalTransparency", descendant.Transparency)
+				descendant.Transparency = 1
+			elseif descendant:GetAttribute("OriginalTransparency") ~= nil then
+				descendant.Transparency = descendant:GetAttribute("OriginalTransparency")
+				descendant:SetAttribute("OriginalTransparency", nil)
+			end
+		end
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = invisible and Enum.HumanoidDisplayDistanceType.None
+			or Enum.HumanoidDisplayDistanceType.Viewer
+	end
+end
+
+local function freezePlayer(target, duration)
+	local root = getRoot(target)
+	if not root then
+		return
+	end
+	root.Anchored = true
+	local ice = makePart(workspace, {
+		Name = "Ice", Size = Vector3.new(5, 7, 5), CFrame = root.CFrame * CFrame.new(0, -0.5, 0),
+		Color = Color3.fromRGB(150, 230, 255), Material = Enum.Material.Ice, Transparency = 0.35,
+		CanCollide = false, CanQuery = false,
+	})
+	task.delay(duration, function()
+		ice:Destroy()
+		if root.Parent then
+			root.Anchored = false
+		end
+	end)
+end
+
+-- Utiliser un objet : renvoie true s'il a servi (il disparaît alors)
+local function useItem(player, item)
+	local character = player.Character
+	local root = getRoot(player)
+	if not character or not root then
+		return false
+	end
+	if item.id == "cloak" then
+		setInvisible(character, true)
+		notify(player, "You are invisible for " .. item.duration .. "s!")
+		task.delay(item.duration, function()
+			if character.Parent then
+				setInvisible(character, false)
+				notify(player, "You are visible again.")
+			end
+		end)
+		return true
+	elseif item.id == "freeze" then
+		local target, best = nil, item.range
+		for _, other in ipairs(Players:GetPlayers()) do
+			local otherRoot = other ~= player and getRoot(other)
+			local humanoid = otherRoot and getHumanoid(other)
+			if humanoid and humanoid.Health > 0 then
+				local distance = (otherRoot.Position - root.Position).Magnitude
+				if distance < best then
+					target, best = other, distance
+				end
+			end
+		end
+		if not target then
+			notify(player, "Nobody close enough to freeze (" .. item.range .. " studs)!")
+			return false
+		end
+		freezePlayer(target, item.duration)
+		notify(player, "You froze " .. target.Name .. "!")
+		notify(target, player.Name .. " froze you!")
+		return true
+	elseif item.id == "raidkey" then
+		raidUntil[player] = os.clock() + item.duration
+		player:SetAttribute("RaidUntil", workspace:GetServerTimeNow() + item.duration)
+		notify(player, "Raid Key active for " .. item.duration .. "s: enter a base and hold E on a critter to STEAL it!")
+		return true
+	end
+	return false
+end
+
+local function hasItem(player, itemId)
+	for _, container in ipairs({ player:FindFirstChild("Backpack"), player.Character }) do
+		if container then
+			for _, child in ipairs(container:GetChildren()) do
+				if child:IsA("Tool") and child:GetAttribute("ItemId") == itemId then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function giveItem(player, item)
+	local tool = Instance.new("Tool")
+	tool.Name = item.name
+	tool.ToolTip = item.description
+	tool.CanBeDropped = false
+	tool:SetAttribute("ItemId", item.id)
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.6, 1.4, 0.6)
+	handle.Color = item.color
+	handle.Material = Enum.Material.Neon
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Parent = tool
+	local busy = false
+	tool.Activated:Connect(function()
+		if busy then
+			return
+		end
+		busy = true
+		if useItem(player, item) then
+			tool:Destroy()
+		end
+		busy = false
+	end)
+	tool.Parent = player:FindFirstChild("Backpack")
+end
+
+local function buyItem(player, item)
+	local data = playerData[player]
+	local cash = getCash(player)
+	if not data or not cash then
+		return
+	end
+	local needed = rarityIndex[item.requires] or 1
+	if (data.best or 0) < needed then
+		notify(player, item.name .. " is locked: get a " .. raritiesById[item.requires].name .. " critter first!")
+		return
+	end
+	if hasItem(player, item.id) then
+		notify(player, "You already have a " .. item.name .. ". Use it first!")
+		return
+	end
+	if cash.Value < item.price then
+		notify(player, "Not enough cash! " .. item.name .. " costs $" .. formatMoney(item.price))
+		return
+	end
+	cash.Value -= item.price
+	giveItem(player, item)
+	notify(player, "You bought a " .. item.name .. "! Equip it (bottom of the screen) and click to use.")
+end
+
+-- La boutique, au fond de la zone des bases
+do
+	local shopX = -200
+	makePart(map, {
+		Name = "ShopFloor", Size = Vector3.new(18, 0.4, 34), CFrame = CFrame.new(shopX, 0.2, 0),
+		Color = Color3.fromRGB(40, 40, 50), Material = Enum.Material.Metal,
+	})
+	makePart(map, {
+		Name = "ShopRoof", Size = Vector3.new(18, 1, 34), CFrame = CFrame.new(shopX, 14, 0),
+		Color = Color3.fromRGB(80, 60, 160), Material = Enum.Material.SmoothPlastic,
+	})
+	for _, z in ipairs({ -16, 16 }) do
+		for _, x in ipairs({ -8, 8 }) do
+			makePart(map, {
+				Name = "ShopPost", Size = Vector3.new(1, 14, 1), CFrame = CFrame.new(shopX + x, 7, z),
+				Color = Color3.fromRGB(255, 200, 40), Material = Enum.Material.Neon,
+			})
+		end
+	end
+	local sign = makePart(map, {
+		Name = "ShopSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(shopX, 18, 0),
+		Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
+	})
+	createBillboard(sign, "ITEM SHOP", "Unlocked by your rarest critter", 0, 18, Color3.fromRGB(255, 200, 40), 250)
+	for i, item in ipairs(Config.Items) do
+		local z = (i - (#Config.Items + 1) / 2) * 10
+		local stand = makePart(map, {
+			Name = "Stand", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3, 4, 4),
+			CFrame = vertical(CFrame.new(shopX, 1.5, z)), Color = Color3.fromRGB(30, 30, 35), Material = Enum.Material.Metal,
+		})
+		local orb = makePart(map, {
+			Name = "ItemOrb", Shape = Enum.PartType.Ball, Size = Vector3.one * 2, CFrame = CFrame.new(shopX, 4.5, z),
+			Color = item.color, Material = Enum.Material.Neon, CanCollide = false,
+		})
+		createBillboard(orb, item.name, "$" .. formatMoney(item.price) .. "  ·  needs " .. raritiesById[item.requires].name,
+			2.5, 10, item.color, 60)
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Buy $" .. formatMoney(item.price)
+		prompt.ObjectText = item.name .. " - " .. item.description
+		prompt.HoldDuration = 0.4
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = stand
+		prompt.Triggered:Connect(function(player)
+			buyItem(player, item)
+		end)
+	end
+end
 
 -- ============================================================
 -- Sauvegarde
@@ -1156,7 +1556,7 @@ if Config.SaveEnabled then
 end
 
 local function loadData(player)
-	local data = { creatures = {}, upgrades = {}, cash = Config.StartingCash, loaded = true }
+	local data = { creatures = {}, upgrades = {}, cash = Config.StartingCash, best = 0, loaded = true }
 	if not dataStore then
 		return data
 	end
@@ -1168,6 +1568,7 @@ local function loadData(player)
 		data.loaded = false -- on ne sauvegardera pas : sinon on écraserait sa vraie partie
 	elseif type(saved) == "table" then
 		data.cash = tonumber(saved.cash) or data.cash
+		data.best = tonumber(saved.best) or 0
 		if type(saved.upgrades) == "table" then
 			for _, upgrade in ipairs(Config.Upgrades) do
 				local level = tonumber(saved.upgrades[upgrade.id])
@@ -1202,6 +1603,7 @@ local function saveData(player)
 			cash = cash.Value,
 			upgrades = data.upgrades,
 			creatures = creatures,
+			best = data.best,
 		})
 	end)
 	if not ok then
@@ -1238,7 +1640,7 @@ local function onCharacterAdded(player, character)
 		end)
 	end
 	humanoid.Died:Connect(function()
-		carrying[player] = {}
+		loseCarried(player)
 		updateCarryAttributes(player)
 		task.delay(3, function()
 			if player.Character == character then
@@ -1299,8 +1701,10 @@ local function onPlayerRemoving(player)
 		plot.padFolder:ClearAllChildren()
 		setBillboard(plot.sign, "FREE BASE", "")
 	end
+	loseCarried(player) -- les créatures volées qu'il portait reviennent à leur propriétaire
 	playerData[player] = nil
 	carrying[player] = nil
+	raidUntil[player] = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
@@ -1325,6 +1729,7 @@ task.spawn(function()
 				local income = 0
 				for _, id in pairs(data.creatures) do
 					local def = creaturesById[id]
+					data.best = math.max(data.best or 0, def and rarityIndex[def.rarity] or 0)
 					if def then
 						income += def.income
 					end
@@ -1366,6 +1771,14 @@ if RunService:IsStudio() then
 			if workspace:GetAttribute("WaveState") ~= "active" then
 				workspace:SetAttribute("WaveState", "warning")
 				workspace:SetAttribute("WaveNextAt", workspace:GetServerTimeNow() + 3)
+			end
+		elseif command == "spawndivine" then
+			spawnDivine()
+		elseif command == "unlockitems" then
+			local data = playerData[player]
+			if data then
+				data.best = #Config.Rarities
+				notify(player, "Test: all items unlocked")
 			end
 		elseif command == "spawnrarity" then
 			-- Fait apparaître une créature de cette rareté au début du chemin

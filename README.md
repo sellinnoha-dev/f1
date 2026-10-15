@@ -10,11 +10,29 @@ pour gagner de l'argent… et cache-toi dans une **tranchée** quand le tsunami 
    COMMON → RARE → EPIC → LEGENDARY → MYTHIC → SECRET.
 3. Maintiens **E** sur une créature pour l'attraper : elle se met au-dessus de ta tête.
 4. Rentre dans ta base : elle se pose sur un piédestal et rapporte de l'argent chaque seconde.
-5. Toutes les 40 s, un **tsunami** arrive (alerte 8 s avant). Saute dans une **tranchée** (bordures jaunes)
+5. Toutes les 35 s, un **tsunami** arrive (alerte 7 s avant). Saute dans une **tranchée** (bordures jaunes)
    pour qu'il passe au-dessus de toi. S'il te touche, tu meurs et tu perds ce que tu portes.
+   Après chaque vague, toutes les créatures sont renouvelées, et parfois (4 %) une créature **DIVINE**
+   apparaît juste devant les bases, avec une aura arc-en-ciel et une annonce pour tout le serveur.
 6. Dans ta base, marche sur les boutons verts pour acheter : **SPEED** (courir plus vite),
    **CARRY** (porter plus de créatures), **PEDESTALS** (plus de places).
 7. Sur un piédestal, maintiens **E** pour vendre la créature (gain par seconde × 30).
+8. **Boutique d'objets** au fond de la zone des bases (un objet = une utilisation) :
+   - **Invisibility Cloak** (débloqué avec une créature RARE) : invisible 12 s.
+   - **Freeze Ray** (EPIC) : gèle le joueur le plus proche pendant 4 s.
+   - **Raid Key** (LEGENDARY) : 20 s pour entrer dans la base d'un autre (protégée sinon) et voler une créature
+     (maintiens E dessus). Si le voleur meurt, la créature revient à son propriétaire.
+
+## Ajouter de la musique (et des sons)
+
+Le code ne peut pas choisir une musique à ta place (les sons Roblox doivent être autorisés pour ton jeu), donc :
+1. Dans l'Explorateur, clic droit sur **SoundService → Insérer un objet → Folder**, renomme-le **`Music`**.
+2. Ouvre la **Boîte à outils**, catégorie **Audio**, cherche « chill » ou « lofi ».
+   Prends de préférence un son publié par **Roblox** (ceux-là sont utilisables dans tous les jeux).
+3. Clique dessus pour l'insérer, puis glisse le son (il arrive dans Workspace) dans le dossier **Music**.
+   Tu peux en mettre plusieurs : ils passent au hasard.
+4. Optionnel : un dossier **`Sounds`** dans SoundService avec des sons nommés **`Siren`**, **`Wave`** ou **`Divine`**
+   remplace les sons par défaut de l'alerte, de la vague et de la créature divine.
 
 ## Installer le jeu dans Studio (sans Rojo)
 
@@ -34,7 +52,7 @@ et **ferme l'onglet Config** s'il est ouvert.
 ## Panneau de test (Studio uniquement)
 
 À droite de l'écran : **+$10K**, **+$1M**, **Wave now** (vague dans 3 s), **Spawn Legendary**, **Spawn SECRET**
-(une créature rare apparaît dans la zone COMMON, tout près de la base).
+(une créature rare apparaît dans la zone COMMON, tout près de la base), **Spawn DIVINE**, **Unlock items**.
 
 ## Tes propres créatures
 

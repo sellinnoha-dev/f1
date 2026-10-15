@@ -154,3 +154,28 @@ if RunService:IsStudio() then
 		addButton("Belt: EXTREME", "deliver", 6)
 	end
 end
+
+-- ============================================================
+-- Touches E/F : n'affiche que celles qui te concernent
+-- (vendre = ton garage, voler = le garage des autres)
+-- ============================================================
+local CollectionService = game:GetService("CollectionService")
+
+local function filterPrompt(prompt, ownerOnly)
+	local function apply()
+		local mine = prompt:GetAttribute("OwnerId") == player.UserId
+		prompt.Enabled = (ownerOnly and mine) or (not ownerOnly and not mine)
+	end
+	apply()
+	prompt:GetAttributeChangedSignal("OwnerId"):Connect(apply)
+end
+
+for _, tag in ipairs({ "OwnerOnly", "ThiefOnly" }) do
+	local ownerOnly = tag == "OwnerOnly"
+	CollectionService:GetInstanceAddedSignal(tag):Connect(function(prompt)
+		filterPrompt(prompt, ownerOnly)
+	end)
+	for _, prompt in ipairs(CollectionService:GetTagged(tag)) do
+		filterPrompt(prompt, ownerOnly)
+	end
+end

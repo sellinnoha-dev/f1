@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "17 - voitures automatiques"
+Config.Version = "18 - vol de voitures"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -69,9 +69,9 @@ Config.BotTradeCooldown = 120 -- secondes minimum entre deux ventes d'un même b
 -- Personnalités : smartness = chance de faire le meilleur choix,
 -- patience = secondes qu'il accepte d'attendre pour économiser, trading = envie de vendre au marché
 Config.BotPersonalities = {
-	{ name = "Saver", smartness = 0.95, patience = 90, trading = 0.03 },
-	{ name = "Trader", smartness = 0.8, patience = 45, trading = 0.25 },
-	{ name = "Rusher", smartness = 0.6, patience = 10, trading = 0.08 },
+	{ name = "Saver", smartness = 0.95, patience = 90, trading = 0.03, steal = 0.02, lock = 0.25 },
+	{ name = "Trader", smartness = 0.8, patience = 45, trading = 0.25, steal = 0.06, lock = 0.12 },
+	{ name = "Rusher", smartness = 0.6, patience = 10, trading = 0.08, steal = 0.15, lock = 0.05 },
 }
 
 -- Marché de voitures (centre de la carte)
@@ -151,9 +151,9 @@ Config.Cars = {
 Config.AutoCars = true
 Config.DropModelNames = { "Bolt", "Tire", "Engine", "Panel", "Rim" } -- pas des voitures
 
--- Répartition : 30 % Common, 25 % Rare, 20 % Epic, 13 % Legendary, 8 % Mythic, 4 % Extreme
--- (la voiture la plus détaillée est toujours EXTREME LEGENDARY)
-Config.AutoRarityShares = { 0.30, 0.25, 0.20, 0.13, 0.08, 0.04 }
+-- Répartition : 20 % Common, 20 % Rare, 20 % Epic, 22 % Legendary (les très détaillées),
+-- 12 % Mythic, 6 % Extreme (seulement les plus détaillées de toutes)
+Config.AutoRarityShares = { 0.20, 0.20, 0.20, 0.22, 0.12, 0.06 }
 
 -- Prix et gain de départ de chaque rareté (dans une même rareté, la plus belle coûte jusqu'à +60 %)
 Config.RarityPricing = {
@@ -199,10 +199,18 @@ Config.CarSlots = {
 }
 
 -- Tapis de livraison (anneau autour du marché) : une nouvelle voiture toutes les X secondes
-Config.DeliveryInterval = 6
+Config.DeliveryInterval = 3
 Config.DeliveryLoopTime = 50 -- secondes pour faire le tour (après, la voiture repart)
 Config.DeliveryRadius = 44
-Config.DeliveryMaxCars = 8
+Config.DeliveryMaxCars = 14
+Config.DeliveryPrefill = 8 -- voitures déjà présentes au lancement (dont une Legendary)
+
+-- Vol de voitures
+Config.StealHoldTime = 2.5 -- secondes à maintenir E pour voler
+Config.CarryWalkSpeed = 10 -- vitesse du voleur qui porte une voiture (normal = 16)
+Config.CarryTimeout = 90 -- secondes max pour ramener la voiture, sinon elle revient
+Config.LockDuration = 60 -- durée du bouclier du garage
+Config.LockCooldown = 30 -- attente avant de pouvoir le réactiver
 
 -- Vente rapide d'une voiture de son garage (touche F) : % du prix récupéré
 Config.QuickSellRatio = 0.5

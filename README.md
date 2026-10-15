@@ -90,6 +90,13 @@ Noms des modèles à ranger dans `ServerStorage > Assets` (2 par rareté) :
 | MYTHIC | `Supercar2`, `Mythic2` |
 | EXTREME LEGENDARY | `Extreme1`, `Extreme2` |
 
+## Vol de voitures
+
+- Dans le garage d'un autre joueur, maintiens **E** (STEAL) sur une voiture : elle passe au-dessus de ta tête et tu es ralenti.
+- Ramène-la dans **ton** garage pour la garder. Si le propriétaire te touche, elle lui revient. Délai max : 90 s.
+- Bouton rouge **LOCK GARAGE** : bouclier de 60 s qui repousse les voleurs, puis 30 s d'attente.
+- Les bots volent, verrouillent et poursuivent les voleurs selon leur personnalité.
+
 ## Utiliser de vrais modèles de la Boîte à outils
 
 Le jeu peut remplacer ses formes simples par des modèles choisis dans la Boîte à outils de Studio.

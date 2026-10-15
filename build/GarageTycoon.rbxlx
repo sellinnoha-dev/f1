@@ -27,7 +27,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "17 - voitures automatiques"
+Config.Version = "18 - vol de voitures"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -89,9 +89,9 @@ Config.BotTradeCooldown = 120 -- secondes minimum entre deux ventes d'un même b
 -- Personnalités : smartness = chance de faire le meilleur choix,
 -- patience = secondes qu'il accepte d'attendre pour économiser, trading = envie de vendre au marché
 Config.BotPersonalities = {
-	{ name = "Saver", smartness = 0.95, patience = 90, trading = 0.03 },
-	{ name = "Trader", smartness = 0.8, patience = 45, trading = 0.25 },
-	{ name = "Rusher", smartness = 0.6, patience = 10, trading = 0.08 },
+	{ name = "Saver", smartness = 0.95, patience = 90, trading = 0.03, steal = 0.02, lock = 0.25 },
+	{ name = "Trader", smartness = 0.8, patience = 45, trading = 0.25, steal = 0.06, lock = 0.12 },
+	{ name = "Rusher", smartness = 0.6, patience = 10, trading = 0.08, steal = 0.15, lock = 0.05 },
 }
 
 -- Marché de voitures (centre de la carte)
@@ -171,9 +171,9 @@ Config.Cars = {
 Config.AutoCars = true
 Config.DropModelNames = { "Bolt", "Tire", "Engine", "Panel", "Rim" } -- pas des voitures
 
--- Répartition : 30 % Common, 25 % Rare, 20 % Epic, 13 % Legendary, 8 % Mythic, 4 % Extreme
--- (la voiture la plus détaillée est toujours EXTREME LEGENDARY)
-Config.AutoRarityShares = { 0.30, 0.25, 0.20, 0.13, 0.08, 0.04 }
+-- Répartition : 20 % Common, 20 % Rare, 20 % Epic, 22 % Legendary (les très détaillées),
+-- 12 % Mythic, 6 % Extreme (seulement les plus détaillées de toutes)
+Config.AutoRarityShares = { 0.20, 0.20, 0.20, 0.22, 0.12, 0.06 }
 
 -- Prix et gain de départ de chaque rareté (dans une même rareté, la plus belle coûte jusqu'à +60 %)
 Config.RarityPricing = {
@@ -219,10 +219,18 @@ Config.CarSlots = {
 }
 
 -- Tapis de livraison (anneau autour du marché) : une nouvelle voiture toutes les X secondes
-Config.DeliveryInterval = 6
+Config.DeliveryInterval = 3
 Config.DeliveryLoopTime = 50 -- secondes pour faire le tour (après, la voiture repart)
 Config.DeliveryRadius = 44
-Config.DeliveryMaxCars = 8
+Config.DeliveryMaxCars = 14
+Config.DeliveryPrefill = 8 -- voitures déjà présentes au lancement (dont une Legendary)
+
+-- Vol de voitures
+Config.StealHoldTime = 2.5 -- secondes à maintenir E pour voler
+Config.CarryWalkSpeed = 10 -- vitesse du voleur qui porte une voiture (normal = 16)
+Config.CarryTimeout = 90 -- secondes max pour ramener la voiture, sinon elle revient
+Config.LockDuration = 60 -- durée du bouclier du garage
+Config.LockCooldown = 30 -- attente avant de pouvoir le réactiver
 
 -- Vente rapide d'une voiture de son garage (touche F) : % du prix récupéré
 Config.QuickSellRatio = 0.5
@@ -384,7 +392,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "17 - voitures automatiques"
+local EXPECTED_CONFIG_VERSION = "18 - vol de voitures"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -1101,6 +1109,14 @@ local function worstCarSlot(data)
 end
 
 local quickSell -- défini juste après
+local tryStealCar -- défini dans la partie "Vol de voitures"
+
+-- Les touches E/F ne s'affichent que pour les bonnes personnes (script PromptFilter côté joueur) :
+-- "OwnerOnly" = seulement le propriétaire, "ThiefOnly" = seulement les autres joueurs
+local function tagPrompt(prompt, tag, owner)
+	prompt:SetAttribute("OwnerId", owner:IsA("Player") and owner.UserId or -1)
+	CollectionService:AddTag(prompt, tag)
+end
 
 -- (Re)construit une place : podium + voiture + touches E (marché) et F (vente rapide)
 local function renderSlot(plot, index)
@@ -1135,6 +1151,7 @@ local function renderSlot(plot, index)
 	sellPrompt.HoldDuration = 1
 	sellPrompt.MaxActivationDistance = 12
 	sellPrompt.RequiresLineOfSight = false
+	tagPrompt(sellPrompt, "OwnerOnly", owner)
 	sellPrompt.Parent = podium
 	sellPrompt.Triggered:Connect(function(player)
 		if player == plot.owner then
@@ -1150,10 +1167,26 @@ local function renderSlot(plot, index)
 	quickPrompt.MaxActivationDistance = 12
 	quickPrompt.RequiresLineOfSight = false
 	quickPrompt.UIOffset = Vector2.new(0, 70)
+	tagPrompt(quickPrompt, "OwnerOnly", owner)
 	quickPrompt.Parent = podium
 	quickPrompt.Triggered:Connect(function(player)
 		if player == plot.owner then
 			quickSell(plot, index)
+		end
+	end)
+
+	-- Les autres joueurs peuvent la voler (maintenir E)
+	local stealPrompt = Instance.new("ProximityPrompt")
+	stealPrompt.ActionText = "STEAL"
+	stealPrompt.ObjectText = car.name .. " (" .. rarity.name .. ")"
+	stealPrompt.HoldDuration = Config.StealHoldTime
+	stealPrompt.MaxActivationDistance = 12
+	stealPrompt.RequiresLineOfSight = false
+	tagPrompt(stealPrompt, "ThiefOnly", owner)
+	stealPrompt.Parent = podium
+	stealPrompt.Triggered:Connect(function(player)
+		if player ~= plot.owner then
+			tryStealCar(player, plot, index)
 		end
 	end)
 
@@ -1570,6 +1603,30 @@ local function createPlot(index)
 	label.Parent = surface
 	plot.signLabel = label
 
+	-- Bouclier anti-voleurs (invisible tant que le garage n'est pas verrouillé)
+	plot.shield = {}
+	local shieldWalls = {
+		{ Vector3.new(84, 30, 1), Vector3.new(0, 15, 41.5) },
+		{ Vector3.new(84, 30, 1), Vector3.new(0, 15, -43.5) },
+		{ Vector3.new(1, 30, 86), Vector3.new(-41.5, 15, -1) },
+		{ Vector3.new(1, 30, 86), Vector3.new(41.5, 15, -1) },
+	}
+	for _, wall in ipairs(shieldWalls) do
+		local part = makePart(model, {
+			Name = "Shield", Size = wall[1], CFrame = at(plot, wall[2].X, wall[2].Y, wall[2].Z),
+			Color = Color3.fromRGB(255, 40, 60), Material = Enum.Material.ForceField,
+			Transparency = 1, CanCollide = false, CanQuery = false, CastShadow = false,
+		})
+		table.insert(plot.shield, part)
+	end
+	plot.lockedUntil = 0
+	plot.lockReadyAt = 0
+	plot.lockPad = makePart(model, {
+		Name = "LockPad", Size = Vector3.new(5, 0.6, 5), CFrame = at(plot, 10, 0.3, 34),
+		Color = Color3.fromRGB(255, 40, 60), Material = Enum.Material.Neon,
+	})
+	plot.lockLabel = createBillboard(plot.lockPad, "LOCK GARAGE", "Ready", 3, 8)
+
 	-- Route entre le centre de la carte et l'entrée du garage
 	local roadEnd = Config.PlotDistance - 30 -- s'arrête au bord du marché
 	local roadLength = roadEnd - 40
@@ -1864,13 +1921,25 @@ local function rollCar(rarityId)
 			end
 		end
 	end
-	local candidates = {}
-	for _, car in ipairs(Config.Cars) do
-		if car.rarity == rarityId then
-			table.insert(candidates, car)
+	-- Aucune voiture de cette rareté ? On descend à la rareté en dessous
+	local startIndex = 1
+	for i, rarity in ipairs(Config.Rarities) do
+		if rarity.id == rarityId then
+			startIndex = i
 		end
 	end
-	return candidates[math.random(#candidates)] or Config.Cars[1]
+	for i = startIndex, 1, -1 do
+		local candidates = {}
+		for _, car in ipairs(Config.Cars) do
+			if car.rarity == Config.Rarities[i].id then
+				table.insert(candidates, car)
+			end
+		end
+		if #candidates > 0 then
+			return candidates[math.random(#candidates)]
+		end
+	end
+	return Config.Cars[math.random(#Config.Cars)]
 end
 
 local function removeBeltCar(entry)
@@ -1906,7 +1975,7 @@ local function buyFromBelt(entry, buyer)
 	notify(buyer, "You got a " .. raritiesById[car.rarity].name .. " " .. car.name .. "!")
 end
 
-local function spawnBeltCar(rarityId)
+local function spawnBeltCar(rarityId, startAngle)
 	if #beltCars >= Config.DeliveryMaxCars then
 		return
 	end
@@ -1925,7 +1994,8 @@ local function spawnBeltCar(rarityId)
 	decorateRarity(carModel, car)
 	createBillboard(root, car.name, rarity.name .. "  ·  $" .. formatMoney(car.price), 6, 11, rarity.color)
 
-	local entry = { car = car, model = model, root = root, offset = start:ToObjectSpace(root.CFrame), angle = 0 }
+	local entry = { car = car, model = model, root = root, offset = start:ToObjectSpace(root.CFrame), angle = startAngle or 0 }
+	root.CFrame = beltCFrame(entry.angle) * entry.offset
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Buy $" .. formatMoney(car.price)
 	prompt.ObjectText = car.name .. " (" .. rarity.name .. ")"
@@ -1960,9 +2030,241 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 task.spawn(function()
+	-- Au lancement, le tapis est déjà rempli, avec au moins une belle voiture
+	local prefill = Config.DeliveryPrefill or 6
+	for i = 1, prefill do
+		local rarity = (i == 1) and "legendary" or ((i == 2) and "epic" or nil)
+		spawnBeltCar(rarity, (i / (prefill + 1)) * 2 * math.pi)
+	end
 	while true do
 		task.wait(Config.DeliveryInterval)
 		spawnBeltCar()
+	end
+end)
+
+-- ============================================================
+-- Vol de voitures : maintenir E sur la voiture d'un autre, la ramener dans son
+-- garage sans se faire toucher par le propriétaire. Le bouclier protège 60 s.
+-- ============================================================
+
+local carrying = {} -- [voleur] = { car, victim, model, deadline }
+
+-- Personnage d'un joueur ou d'un bot
+local function getCharacter(owner)
+	if not owner then
+		return nil
+	end
+	if owner:IsA("Player") then
+		return owner.Character
+	end
+	local link = owner:FindFirstChild("Character")
+	return link and link.Value
+end
+
+local function getRoot(owner)
+	local character = getCharacter(owner)
+	return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+local function inPlot(plot, position)
+	local localPosition = plot.cframe:PointToObjectSpace(position)
+	return math.abs(localPosition.X) < 42 and math.abs(localPosition.Z) < 44
+end
+
+local function isLocked(plot)
+	return os.clock() < plot.lockedUntil
+end
+
+-- Repousse hors du garage les intrus quand le bouclier est actif
+local function pushOut(plot, character)
+	character:PivotTo(at(plot, 0, 4, 50))
+end
+
+local function lockGarage(plot)
+	if not plot.owner or isLocked(plot) or os.clock() < plot.lockReadyAt then
+		return false
+	end
+	plot.lockedUntil = os.clock() + Config.LockDuration
+	plot.lockReadyAt = plot.lockedUntil + Config.LockCooldown
+	for _, part in ipairs(plot.shield) do
+		part.Transparency = 0.4
+	end
+	-- Les intrus déjà à l'intérieur sont repoussés
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = player ~= plot.owner and getRoot(player)
+		if root and inPlot(plot, root.Position) then
+			pushOut(plot, player.Character)
+		end
+	end
+	notify(plot.owner, "Garage locked for " .. Config.LockDuration .. " seconds!")
+	return true
+end
+
+for _, plot in ipairs(plots) do
+	plot.lockPad.Touched:Connect(function(hit)
+		local player = Players:GetPlayerFromCharacter(hit.Parent)
+		if player and player == plot.owner then
+			lockGarage(plot)
+		end
+	end)
+	for _, part in ipairs(plot.shield) do
+		part.Touched:Connect(function(hit)
+			if not isLocked(plot) then
+				return
+			end
+			local character = hit.Parent
+			local player = Players:GetPlayerFromCharacter(character)
+			if player and player ~= plot.owner then
+				pushOut(plot, character)
+				notify(player, "This garage is locked!")
+			end
+		end)
+	end
+end
+
+-- Mini-voiture au-dessus de la tête du voleur
+local function attachCarriedCar(character, car)
+	local head = character:FindFirstChild("Head")
+	if not head then
+		return nil
+	end
+	local holder = Instance.new("Model")
+	holder.Name = "CarriedCar"
+	holder.Parent = character
+	local model = placeCar(car, holder, head.CFrame * CFrame.new(0, 2.5, 0), true)
+	if not model or not model.PrimaryPart then
+		holder:Destroy()
+		return nil
+	end
+	model:ScaleTo(0.35)
+	model:PivotTo(head.CFrame * CFrame.new(0, 2, 0))
+	for _, part in ipairs(getParts(model)) do
+		part.Anchored = false
+		part.Massless = true
+		part.CanCollide = false
+	end
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = head
+	weld.Part1 = model.PrimaryPart
+	weld.Parent = model.PrimaryPart
+	createBillboard(model.PrimaryPart, "STOLEN!", car.name, 3, 7, Color3.fromRGB(255, 60, 60))
+	return holder
+end
+
+local function setWalkSpeed(owner, speed)
+	local character = getCharacter(owner)
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.WalkSpeed = speed
+	end
+end
+
+local function endCarry(thief)
+	local entry = carrying[thief]
+	if not entry then
+		return nil
+	end
+	carrying[thief] = nil
+	if entry.model then
+		entry.model:Destroy()
+	end
+	setWalkSpeed(thief, 16)
+	return entry
+end
+
+function tryStealCar(thief, plot, index)
+	local victim = plot.owner
+	local victimData = victim and playerData[victim]
+	local thiefData = playerData[thief]
+	local car = victimData and victimData.cars[index] and carsById[victimData.cars[index]]
+	if not car or not thiefData or not thiefData.plot or thiefData.plot == plot then
+		return false
+	end
+	if carrying[thief] then
+		notify(thief, "You are already carrying a car!")
+		return false
+	end
+	if isLocked(plot) then
+		notify(thief, "This garage is locked!")
+		return false
+	end
+	if not freeSlotIndex(thiefData) then
+		notify(thief, "Your garage is full! Make room before stealing.")
+		return false
+	end
+
+	victimData.cars[index] = nil
+	renderSlot(plot, index)
+	local character = getCharacter(thief)
+	carrying[thief] = {
+		car = car,
+		victim = victim,
+		model = character and attachCarriedCar(character, car),
+		deadline = os.clock() + Config.CarryTimeout,
+	}
+	setWalkSpeed(thief, Config.CarryWalkSpeed)
+	notify(thief, "You stole " .. car.name .. "! Bring it back to YOUR garage!")
+	notify(victim, displayName(thief) .. " is stealing your " .. car.name .. "! Catch them!")
+	return true
+end
+
+-- Toutes les 0,2 s : voleur rentré chez lui ? attrapé par le propriétaire ? temps écoulé ?
+task.spawn(function()
+	while true do
+		task.wait(0.2)
+		for thief, entry in pairs(carrying) do
+			local thiefData = playerData[thief]
+			local thiefRoot = getRoot(thief)
+			local victimRoot = getRoot(entry.victim)
+			if not thiefData or not thiefRoot or os.clock() > entry.deadline then
+				-- Voleur parti, mort ou trop lent : la voiture revient
+				endCarry(thief)
+				giveCar(entry.victim, entry.car)
+				notify(entry.victim, "Your " .. entry.car.name .. " came back!")
+			elseif victimRoot and (victimRoot.Position - thiefRoot.Position).Magnitude < 6 then
+				endCarry(thief)
+				giveCar(entry.victim, entry.car)
+				notify(entry.victim, "You caught " .. displayName(thief) .. "! " .. entry.car.name .. " is back.")
+				notify(thief, "Caught! " .. entry.car.name .. " went back to its owner.")
+			elseif thiefData.plot and inPlot(thiefData.plot, thiefRoot.Position) then
+				endCarry(thief)
+				giveCar(thief, entry.car)
+				notify(thief, "Stolen car secured: " .. entry.car.name .. "!")
+				notify(entry.victim, displayName(thief) .. " stole your " .. entry.car.name .. "!")
+			end
+		end
+	end
+end)
+
+-- Panneaux du bouclier : temps restant
+task.spawn(function()
+	while true do
+		task.wait(1)
+		local now = os.clock()
+		for _, plot in ipairs(plots) do
+			local subtitle
+			if now < plot.lockedUntil then
+				subtitle = "LOCKED " .. math.ceil(plot.lockedUntil - now) .. "s"
+			elseif now < plot.lockReadyAt then
+				subtitle = "Ready in " .. math.ceil(plot.lockReadyAt - now) .. "s"
+				if plot.shield[1].Transparency < 1 then
+					for _, part in ipairs(plot.shield) do
+						part.Transparency = 1
+					end
+				end
+			else
+				subtitle = "Ready (60s)"
+				if plot.shield[1].Transparency < 1 then
+					for _, part in ipairs(plot.shield) do
+						part.Transparency = 1
+					end
+				end
+			end
+			local labels = plot.lockLabel:GetChildren() -- [1] titre, [2] sous-titre
+			if labels[2] and labels[2]:IsA("TextLabel") then
+				labels[2].Text = subtitle
+			end
+		end
 	end
 end)
 
@@ -2172,6 +2474,11 @@ local function releasePlot(plot)
 		plot.rebirthButton = nil
 	end
 	plot.signLabel.Text = "Free Garage"
+	plot.lockedUntil = 0
+	plot.lockReadyAt = 0
+	for _, part in ipairs(plot.shield) do
+		part.Transparency = 1
+	end
 	applyTheme(plot)
 end
 
@@ -2325,6 +2632,10 @@ local function onPlayerAdded(player)
 end
 
 local function onPlayerRemoving(player)
+	local carried = endCarry(player)
+	if carried then
+		giveCar(carried.victim, carried.car)
+	end
 	cancelListings(player)
 	saveData(player)
 	local data = playerData[player]
@@ -2361,6 +2672,10 @@ local function createBotCharacter(bot, plot)
 		return nil
 	end
 	character.Name = bot.Name
+	local link = Instance.new("ObjectValue")
+	link.Name = "Character"
+	link.Value = character
+	link.Parent = bot
 	local state = bots[bot]
 	character:FindFirstChildOfClass("Humanoid").DisplayName = bot.Name .. " [BOT · " .. state.personality.name .. "]"
 	character.Parent = workspace
@@ -2512,6 +2827,64 @@ local function botBrain(bot, state)
 			break
 		end
 		local income = math.max(estimateIncome(bot, data.owned, data.cars), 1)
+
+		-- 0) Urgences : on me vole une voiture -> je poursuis le voleur
+		local chasing = false
+		for thief, entry in pairs(carrying) do
+			local thiefRoot = entry.victim == bot and getRoot(thief)
+			if thiefRoot then
+				setThought(state, "Hey! Give back my " .. entry.car.name .. "!")
+				botWalkTo(state, thiefRoot.Position)
+				chasing = true
+				break
+			end
+		end
+		if chasing then
+			continue
+		end
+		-- Je porte une voiture volée -> je rentre vite chez moi
+		if carrying[bot] then
+			setThought(state, "Got it! Running home!")
+			botWalkTo(state, at(plot, 0, 3, 20).Position)
+			continue
+		end
+		-- J'ai de belles voitures et mon bouclier est prêt -> je verrouille parfois
+		if next(data.cars) and not isLocked(plot) and os.clock() >= plot.lockReadyAt
+			and math.random() < personality.lock then
+			setThought(state, "Locking my garage, no thieves allowed!")
+			botWalkTo(state, at(plot, 10, 3, 34).Position)
+			lockGarage(plot)
+			continue
+		end
+		-- Tenter un vol dans un garage ouvert
+		if freeSlotIndex(data) and math.random() < personality.steal then
+			local bestPlot, bestIndex, bestIncome = nil, nil, 0
+			for _, other in ipairs(plots) do
+				local otherData = other ~= plot and other.owner and playerData[other.owner]
+				if otherData and not isLocked(other) then
+					for index, carId in pairs(otherData.cars) do
+						local car = carsById[carId]
+						if car and car.income > bestIncome then
+							bestPlot, bestIndex, bestIncome = other, index, car.income
+						end
+					end
+				end
+			end
+			if bestPlot then
+				local car = carsById[playerData[bestPlot.owner].cars[bestIndex]]
+				setThought(state, "That " .. car.name .. " looks nice... I'll steal it!")
+				local p = Config.CarSlots[bestIndex].position
+				local target = at(bestPlot, p.X - 7, p.Y + 3, p.Z).Position
+				botWalkTo(state, target)
+				local root = getRoot(bot)
+				if bots[bot] and root and (root.Position - target).Magnitude < 15 then
+					tryStealCar(bot, bestPlot, bestIndex)
+				else
+					setThought(state, "Couldn't reach it...")
+				end
+				continue
+			end
+		end
 
 		-- 1) Lister les options
 		local options = {}
@@ -3084,6 +3457,31 @@ if RunService:IsStudio() then
 		addButton("Reset Rebirths", "rebirths", 0)
 		addButton("Belt: Legendary", "deliver", 4)
 		addButton("Belt: EXTREME", "deliver", 6)
+	end
+end
+
+-- ============================================================
+-- Touches E/F : n'affiche que celles qui te concernent
+-- (vendre = ton garage, voler = le garage des autres)
+-- ============================================================
+local CollectionService = game:GetService("CollectionService")
+
+local function filterPrompt(prompt, ownerOnly)
+	local function apply()
+		local mine = prompt:GetAttribute("OwnerId") == player.UserId
+		prompt.Enabled = (ownerOnly and mine) or (not ownerOnly and not mine)
+	end
+	apply()
+	prompt:GetAttributeChangedSignal("OwnerId"):Connect(apply)
+end
+
+for _, tag in ipairs({ "OwnerOnly", "ThiefOnly" }) do
+	local ownerOnly = tag == "OwnerOnly"
+	CollectionService:GetInstanceAddedSignal(tag):Connect(function(prompt)
+		filterPrompt(prompt, ownerOnly)
+	end)
+	for _, prompt in ipairs(CollectionService:GetTagged(tag)) do
+		filterPrompt(prompt, ownerOnly)
 	end
 end
 ]]></string>

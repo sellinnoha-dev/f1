@@ -18,7 +18,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "13 - commandes chat"
+local EXPECTED_CONFIG_VERSION = "14 - panneau de test"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -1926,6 +1926,29 @@ local function onTestCommand(player, message)
 		end
 		notify(player, "Test: " .. amount .. " rebirths, garage level " .. getTier(player).name)
 	end
+end
+
+-- Panneau de test à l'écran (boutons, Studio uniquement)
+if RunService:IsStudio() then
+	local testEvent = Instance.new("RemoteEvent")
+	testEvent.Name = "TestCommand"
+	testEvent.Parent = ReplicatedStorage
+	testEvent.OnServerEvent:Connect(function(player, command, amount)
+		if typeof(command) ~= "string" or typeof(amount) ~= "number" then
+			return
+		end
+		if command == "addcash" then
+			local cash = getCash(player)
+			if cash then
+				amount = cash.Value + amount
+			end
+			command = "cash"
+		elseif command == "addrebirth" then
+			amount = getRebirths(player) + amount
+			command = "rebirths"
+		end
+		onTestCommand(player, "/" .. command .. " " .. math.floor(amount))
+	end)
 end
 
 -- Nouveau chat Roblox (TextChatService) : commandes officielles, invisibles pour les autres

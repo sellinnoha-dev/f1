@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "13 - commandes chat"
+Config.Version = "14 - panneau de test"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0

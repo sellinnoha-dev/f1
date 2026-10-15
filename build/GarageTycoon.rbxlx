@@ -27,7 +27,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "13 - commandes chat"
+Config.Version = "14 - panneau de test"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -302,7 +302,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "13 - commandes chat"
+local EXPECTED_CONFIG_VERSION = "14 - panneau de test"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -2212,6 +2212,29 @@ local function onTestCommand(player, message)
 	end
 end
 
+-- Panneau de test à l'écran (boutons, Studio uniquement)
+if RunService:IsStudio() then
+	local testEvent = Instance.new("RemoteEvent")
+	testEvent.Name = "TestCommand"
+	testEvent.Parent = ReplicatedStorage
+	testEvent.OnServerEvent:Connect(function(player, command, amount)
+		if typeof(command) ~= "string" or typeof(amount) ~= "number" then
+			return
+		end
+		if command == "addcash" then
+			local cash = getCash(player)
+			if cash then
+				amount = cash.Value + amount
+			end
+			command = "cash"
+		elseif command == "addrebirth" then
+			amount = getRebirths(player) + amount
+			command = "rebirths"
+		end
+		onTestCommand(player, "/" .. command .. " " .. math.floor(amount))
+	end)
+end
+
 -- Nouveau chat Roblox (TextChatService) : commandes officielles, invisibles pour les autres
 local TextChatService = game:GetService("TextChatService")
 if RunService:IsStudio() then
@@ -2455,6 +2478,63 @@ ReplicatedStorage:WaitForChild("Notify").OnClientEvent:Connect(function(text)
 		StarterGui:SetCore("SendNotification", { Title = "Garage Tycoon", Text = text, Duration = 5 })
 	end)
 end)
+
+-- ============================================================
+-- Panneau de test (seulement dans Roblox Studio) : boutons pour aller plus vite
+-- ============================================================
+local RunService = game:GetService("RunService")
+if RunService:IsStudio() then
+	local testEvent = ReplicatedStorage:WaitForChild("TestCommand", 10)
+	if testEvent then
+		local panel = Instance.new("Frame")
+		panel.AnchorPoint = Vector2.new(1, 0.5)
+		panel.Position = UDim2.new(1, -12, 0.5, 0)
+		panel.Size = UDim2.fromOffset(150, 170)
+		panel.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+		panel.BackgroundTransparency = 0.25
+		panel.Parent = gui
+		local panelCorner = Instance.new("UICorner")
+		panelCorner.CornerRadius = UDim.new(0, 10)
+		panelCorner.Parent = panel
+		local layout = Instance.new("UIListLayout")
+		layout.Padding = UDim.new(0, 6)
+		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		layout.Parent = panel
+		local panelPadding = Instance.new("UIPadding")
+		panelPadding.PaddingTop = UDim.new(0, 8)
+		panelPadding.Parent = panel
+
+		local title = Instance.new("TextLabel")
+		title.Size = UDim2.fromOffset(130, 18)
+		title.BackgroundTransparency = 1
+		title.Font = Enum.Font.GothamBold
+		title.TextScaled = true
+		title.TextColor3 = Color3.fromRGB(255, 200, 0)
+		title.Text = "TEST (Studio)"
+		title.Parent = panel
+
+		local function addButton(text, command, amount)
+			local button = Instance.new("TextButton")
+			button.Size = UDim2.fromOffset(130, 28)
+			button.BackgroundColor3 = Color3.fromRGB(60, 140, 255)
+			button.Font = Enum.Font.GothamBold
+			button.TextScaled = true
+			button.TextColor3 = Color3.new(1, 1, 1)
+			button.Text = text
+			button.Parent = panel
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = button
+			button.Activated:Connect(function()
+				testEvent:FireServer(command, amount)
+			end)
+		end
+		addButton("+ $10K", "addcash", 10000)
+		addButton("+ $250K", "addcash", 250000)
+		addButton("+1 Rebirth", "addrebirth", 1)
+		addButton("Reset Rebirths", "rebirths", 0)
+	end
+end
 ]]></string>
         </Properties>
       </Item>

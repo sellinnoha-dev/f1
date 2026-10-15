@@ -154,14 +154,17 @@ local divineSound = getSound("Divine", "rbxasset://sounds/electronicpingshort.wa
 -- Musique d'ambiance : chaque son du dossier Music, dans un ordre au hasard
 local music = nil
 task.spawn(function()
-	local folder = SoundService:WaitForChild("Music", 5)
-	if not folder then
-		return
-	end
+	-- Musiques : dans le dossier SoundService > Music, ou posées directement dans SoundService
+	task.wait(2)
 	local tracks = {}
-	for _, child in ipairs(folder:GetChildren()) do
-		if child:IsA("Sound") then
-			table.insert(tracks, child)
+	local folder = SoundService:FindFirstChild("Music")
+	for _, container in ipairs({ folder, SoundService }) do
+		if container then
+			for _, child in ipairs(container:GetChildren()) do
+				if child:IsA("Sound") and not ({ Siren = true, Wave = true, Divine = true })[child.Name] then
+					table.insert(tracks, child)
+				end
+			end
 		end
 	end
 	if #tracks == 0 then

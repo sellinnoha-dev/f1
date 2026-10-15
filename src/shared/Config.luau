@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "8 - marche de voitures"
+Config.Version = "9 - niveaux de garage et bots"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -25,6 +25,47 @@ Config.PlotDistance = 100
 Config.RebirthCost = 150000 -- prix du 1er rebirth (x2 pour le 2e, x3 pour le 3e...)
 Config.RebirthBonus = 0.5 -- +50 % d'argent par rebirth
 Config.RebirthButton = Vector3.new(16, 0, -8)
+
+-- Niveaux du garage : chaque rebirth fait passer au niveau suivant
+-- (sol, murs, néons, lampadaires, façade plus haute, plantes, tapis rouge...)
+Config.GarageTiers = {
+	{
+		name = "STANDARD", lamps = 0,
+		floorColor = Color3.fromRGB(70, 70, 75), floorMaterial = Enum.Material.Concrete,
+		wallColor = Color3.fromRGB(200, 200, 205), wallMaterial = Enum.Material.Brick,
+		trimColor = Color3.fromRGB(255, 200, 0),
+	},
+	{
+		name = "BRONZE", lamps = 2,
+		floorColor = Color3.fromRGB(125, 90, 60), floorMaterial = Enum.Material.WoodPlanks,
+		wallColor = Color3.fromRGB(175, 115, 75), wallMaterial = Enum.Material.Brick,
+		trimColor = Color3.fromRGB(205, 127, 50),
+	},
+	{
+		name = "SILVER", lamps = 4,
+		floorColor = Color3.fromRGB(215, 215, 220), floorMaterial = Enum.Material.Marble,
+		wallColor = Color3.fromRGB(235, 235, 240), wallMaterial = Enum.Material.SmoothPlastic,
+		trimColor = Color3.fromRGB(120, 200, 255),
+	},
+	{
+		name = "GOLD", lamps = 6,
+		floorColor = Color3.fromRGB(30, 30, 35), floorMaterial = Enum.Material.Slate,
+		wallColor = Color3.fromRGB(45, 45, 50), wallMaterial = Enum.Material.Marble,
+		trimColor = Color3.fromRGB(255, 200, 0),
+	},
+	{
+		name = "DIAMOND", lamps = 6,
+		floorColor = Color3.fromRGB(200, 235, 255), floorMaterial = Enum.Material.Marble,
+		wallColor = Color3.fromRGB(235, 248, 255), wallMaterial = Enum.Material.Glass,
+		trimColor = Color3.fromRGB(150, 240, 255),
+	},
+}
+
+-- Bots : faux joueurs qui jouent tout seuls dans les garages libres
+Config.BotsEnabled = true
+Config.BotsOnlyInStudio = true -- true = seulement quand tu testes dans Studio
+Config.BotCount = 2
+Config.BotMarketChance = 0.15 -- chance à chaque réflexion de vendre/acheter au marché
 
 -- Marché de voitures (centre de la carte)
 Config.MarketSlots = 8 -- nombre d'emplacements de vente

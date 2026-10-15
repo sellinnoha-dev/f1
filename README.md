@@ -52,6 +52,13 @@ Astuce : la prochaine fois, clique dans la barre de commande et appuie sur **fl�
 - Personne ne l'achète en 3 minutes ? Elle revient dans ton garage. Tu peux aussi la reprendre toi-même avec **E**.
 - Pour tester à plusieurs dans Studio : onglet **Test → Clients et serveurs → 2 joueurs → Démarrer**.
 
+## Niveaux du garage et bots
+
+- Chaque **rebirth** fait monter le garage d'un niveau : STANDARD → BRONZE → SILVER → GOLD → DIAMOND
+  (sol, murs, néons, lampadaires, façade plus haute, plantes, tapis rouge, paillettes).
+- Des **bots** prennent les garages libres et jouent tout seuls (achats, rebirths, marché).
+  Par défaut ils n'apparaissent que dans Studio (`Config.BotsOnlyInStudio`). Un vrai joueur qui arrive prend la place d'un bot.
+
 ## Utiliser de vrais modèles de la Boîte à outils
 
 Le jeu peut remplacer ses formes simples par des modèles choisis dans la Boîte à outils de Studio.

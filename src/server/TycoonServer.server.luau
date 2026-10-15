@@ -125,6 +125,28 @@ local function getRebirths(player)
 	return rebirths and rebirths.Value or 0
 end
 
+-- Nom affiché d'un propriétaire (joueur ou bot)
+local function displayName(owner)
+	return owner:IsA("Player") and owner.DisplayName or owner.Name
+end
+
+-- Messages en bas à droite de l'écran du joueur (ignorés pour les bots)
+local notifyEvent = Instance.new("RemoteEvent")
+notifyEvent.Name = "Notify"
+notifyEvent.Parent = ReplicatedStorage
+
+local function notify(owner, text)
+	if owner and owner:IsA("Player") then
+		notifyEvent:FireClient(owner, text)
+	end
+end
+
+-- Niveau du garage selon le nombre de rebirths (Standard, Bronze, Argent...)
+local function getTier(owner)
+	local index = math.min((owner and getRebirths(owner) or 0) + 1, #Config.GarageTiers)
+	return Config.GarageTiers[index], index
+end
+
 -- Multiplicateur total d'argent : Game Pass x2 et bonus de rebirth
 local function getMultiplier(player)
 	return (player:GetAttribute("CashMultiplier") or 1) * (1 + Config.RebirthBonus * getRebirths(player))
@@ -364,11 +386,12 @@ local function buildWalls(plot, item, model)
 		{ Vector3.new(1, 16, 80), Vector3.new(-40, 8, 0) }, -- gauche
 		{ Vector3.new(1, 16, 80), Vector3.new(40, 8, 0) },  -- droite
 	}
+	local tier = getTier(plot.owner)
 	for _, wall in ipairs(walls) do
 		local size, pos = wall[1], wall[2]
 		makePart(model, {
 			Name = "Wall", Size = size, CFrame = at(plot, pos.X, pos.Y, pos.Z),
-			Color = item.color, Material = Enum.Material.Brick,
+			Color = tier.wallColor, Material = tier.wallMaterial,
 		})
 	end
 end
@@ -527,6 +550,7 @@ local function buildUpperFloor(plot, item, model)
 		end
 		return makePart(model, props)
 	end
+	local tier = getTier(plot.owner)
 	local floorColor = Color3.fromRGB(225, 225, 230)
 	local glass = { Transparency = 0.5 }
 
@@ -552,11 +576,11 @@ local function buildUpperFloor(plot, item, model)
 	block("Railing", Vector3.new(0.4, 3, 75), 16.2, FLOOR_Y + 1.5, 2.5, item.color, Enum.Material.Glass, glass)
 	block("Railing", Vector3.new(8, 3, 0.4), 12, FLOOR_Y + 1.5, -35.2, item.color, Enum.Material.Glass, glass)
 	block("Railing", Vector3.new(24, 3, 0.4), 28, FLOOR_Y + 1.5, 39.8, item.color, Enum.Material.Glass, glass)
-	block("UpperWall", Vector3.new(1, 10, 80), 40, FLOOR_Y + 5, 0, Color3.fromRGB(200, 200, 205), Enum.Material.Brick)
-	block("UpperWall", Vector3.new(38, 10, 1), 21, FLOOR_Y + 5, -40, Color3.fromRGB(200, 200, 205), Enum.Material.Brick)
+	block("UpperWall", Vector3.new(1, 10, 80), 40, FLOOR_Y + 5, 0, tier.wallColor, tier.wallMaterial)
+	block("UpperWall", Vector3.new(38, 10, 1), 21, FLOOR_Y + 5, -40, tier.wallColor, tier.wallMaterial)
 
 	-- Bande lumineuse et panneau
-	local strip = block("NeonStrip", Vector3.new(0.3, 0.4, 78), 39.4, FLOOR_Y + 9, 0, COLOR_GOLD, Enum.Material.Neon)
+	local strip = block("NeonStrip", Vector3.new(0.3, 0.4, 78), 39.4, FLOOR_Y + 9, 0, tier.trimColor, Enum.Material.Neon)
 	createBillboard(strip, "VIP SHOWROOM", nil, 2, 16)
 end
 
@@ -595,28 +619,36 @@ local function flashDenied(button)
 	end)
 end
 
-local function tryBuy(plot, item, button, hit)
-	local player = Players:GetPlayerFromCharacter(hit.Parent)
-	if not player or player ~= plot.owner or plot.buying then
-		return
+-- Achat d'un objet par le propriétaire du garage (joueur ou bot). Renvoie true si acheté.
+local function purchase(plot, owner, item)
+	if owner ~= plot.owner or plot.buying then
+		return false
 	end
-	local data = playerData[player]
-	local cash = getCash(player)
-	if not data or not cash or data.owned[item.id] then
-		return
+	local data = playerData[owner]
+	local cash = getCash(owner)
+	if not data or not cash or data.owned[item.id] or cash.Value < item.price then
+		return false
 	end
-
-	if cash.Value < item.price then
-		flashDenied(button)
-		return
-	end
-
 	plot.buying = true
 	cash.Value -= item.price
 	data.owned[item.id] = true
 	buildItem(plot, item)
 	refreshButtons(plot)
 	plot.buying = false
+	return true
+end
+
+local function tryBuy(plot, item, button, hit)
+	local player = Players:GetPlayerFromCharacter(hit.Parent)
+	if not player or player ~= plot.owner then
+		return
+	end
+	local cash = getCash(player)
+	if cash and cash.Value < item.price then
+		flashDenied(button)
+		return
+	end
+	purchase(plot, player, item)
 end
 
 local function createButton(plot, item)
@@ -642,20 +674,18 @@ local function getRebirthCost(player)
 	return Config.RebirthCost * (getRebirths(player) + 1)
 end
 
-local function doRebirth(plot, button, hit)
-	local player = Players:GetPlayerFromCharacter(hit.Parent)
-	if not player or player ~= plot.owner or plot.buying then
-		return
+local applyTheme -- défini plus bas : décore le garage selon son niveau
+
+-- Rebirth du propriétaire (joueur ou bot). Renvoie true si effectué.
+local function performRebirth(plot, owner)
+	if owner ~= plot.owner or plot.buying then
+		return false
 	end
-	local data = playerData[player]
-	local cash = getCash(player)
-	local rebirths = player.leaderstats:FindFirstChild("Rebirths")
-	if not data or not cash or not rebirths then
-		return
-	end
-	if cash.Value < getRebirthCost(player) then
-		flashDenied(button)
-		return
+	local data = playerData[owner]
+	local cash = getCash(owner)
+	local rebirths = owner.leaderstats:FindFirstChild("Rebirths")
+	if not data or not cash or not rebirths or cash.Value < getRebirthCost(owner) then
+		return false
 	end
 
 	plot.buying = true
@@ -670,8 +700,25 @@ local function doRebirth(plot, button, hit)
 	plot.buttons = {}
 	plot.rebirthButton:Destroy()
 	plot.rebirthButton = nil
+	applyTheme(plot)
 	refreshButtons(plot)
 	plot.buying = false
+	local tier = getTier(owner)
+	notify(owner, "Rebirth! Your garage is now " .. tier.name .. " level!")
+	return true
+end
+
+local function doRebirth(plot, button, hit)
+	local player = Players:GetPlayerFromCharacter(hit.Parent)
+	if not player or player ~= plot.owner then
+		return
+	end
+	local cash = getCash(player)
+	if cash and cash.Value < getRebirthCost(player) then
+		flashDenied(button)
+		return
+	end
+	performRebirth(plot, player)
 end
 
 local function createRebirthButton(plot)
@@ -724,7 +771,7 @@ end
 -- Bouton doré pour acheter le Game Pass "Argent x2"
 local function createGamePassPad(plot)
 	local owner = plot.owner
-	if Config.CashX2GamePassId == 0 or not owner or owner:GetAttribute("CashMultiplier") == 2 then
+	if Config.CashX2GamePassId == 0 or not owner or not owner:IsA("Player") or owner:GetAttribute("CashMultiplier") == 2 then
 		return
 	end
 	local pad = makePart(plot.model, {
@@ -778,7 +825,11 @@ local function createPlot(index)
 	plot.drops.Name = "Drops"
 	plot.drops.Parent = model
 
-	makePart(model, {
+	plot.decor = Instance.new("Folder")
+	plot.decor.Name = "Decor"
+	plot.decor.Parent = model
+
+	plot.floor = makePart(model, {
 		Name = "Floor", Size = Vector3.new(80, 1, 80), CFrame = at(plot, 0, -0.5, 0),
 		Color = COLOR_FLOOR, Material = Enum.Material.Concrete,
 	})
@@ -853,14 +904,6 @@ end
 -- Un joueur y met une de ses voitures ; les autres peuvent l'acheter moins cher
 -- qu'en boutique, et le vendeur touche un bonus. Invendue = elle revient.
 -- ============================================================
-
-local notifyEvent = Instance.new("RemoteEvent")
-notifyEvent.Name = "Notify"
-notifyEvent.Parent = ReplicatedStorage
-
-local function notify(player, text)
-	notifyEvent:FireClient(player, text)
-end
 
 local marketFolder = Instance.new("Folder")
 marketFolder.Name = "CarMarket"
@@ -960,7 +1003,7 @@ local function buyCar(slot, buyer)
 	if sellerCash then
 		local earned = math.floor(item.price * Config.MarketSellerBonus)
 		sellerCash.Value += earned
-		notify(seller, buyer.DisplayName .. " bought your " .. item.name .. "! +$" .. formatMoney(earned))
+		notify(seller, displayName(buyer) .. " bought your " .. item.name .. "! +$" .. formatMoney(earned))
 	end
 end
 
@@ -1031,9 +1074,9 @@ function listCar(plot, item)
 	freeSlot.listing = { seller = seller, item = item, expires = os.clock() + Config.MarketDuration }
 	placeCar(item, freeSlot.display, freeSlot.base)
 	freeSlot.prompt.ActionText = "Buy for $" .. formatMoney(buyPrice(item))
-	freeSlot.prompt.ObjectText = item.name .. " (seller: " .. seller.DisplayName .. ")"
+	freeSlot.prompt.ObjectText = item.name .. " (seller: " .. displayName(seller) .. ")"
 	freeSlot.prompt.Enabled = true
-	setSlotLabel(freeSlot, item.name, "$" .. formatMoney(buyPrice(item)) .. "  ·  " .. seller.DisplayName)
+	setSlotLabel(freeSlot, item.name, "$" .. formatMoney(buyPrice(item)) .. "  ·  " .. displayName(seller))
 	local minutes = math.floor(Config.MarketDuration / 60 + 0.5)
 	notify(seller, item.name .. " is on the market for " .. minutes .. " min. Sold = +$"
 		.. formatMoney(math.floor(item.price * Config.MarketSellerBonus)) .. "!")
@@ -1065,6 +1108,86 @@ local function cancelListings(player)
 	end
 end
 
+-- ============================================================
+-- Niveau du garage : plus de rebirths = garage plus luxueux et plus grand
+-- ============================================================
+
+function applyTheme(plot)
+	local tier, level = getTier(plot.owner)
+	plot.floor.Color = tier.floorColor
+	plot.floor.Material = tier.floorMaterial
+	plot.signLabel.TextColor3 = tier.trimColor
+	plot.decor:ClearAllChildren()
+
+	local function deco(name, size, x, y, z, color, material, extra)
+		local props = {
+			Name = name, Size = size, CFrame = at(plot, x, y, z),
+			Color = color, Material = material,
+		}
+		for key, value in pairs(extra or {}) do
+			props[key] = value
+		end
+		return makePart(plot.decor, props)
+	end
+
+	-- Les murs déjà construits prennent la couleur du niveau
+	for _, part in ipairs(plot.items:GetDescendants()) do
+		if part:IsA("BasePart") and (part.Name == "Wall" or part.Name == "UpperWall") then
+			part.Color = tier.wallColor
+			part.Material = tier.wallMaterial
+		end
+	end
+
+	if level >= 2 then
+		-- Néons au sol tout autour du garage
+		local trim = { Material = Enum.Material.Neon }
+		deco("Trim", Vector3.new(80, 0.1, 0.4), 0, 0.05, -39.6, tier.trimColor, Enum.Material.Neon, trim)
+		deco("Trim", Vector3.new(0.4, 0.1, 80), -39.6, 0.05, 0, tier.trimColor, Enum.Material.Neon, trim)
+		deco("Trim", Vector3.new(0.4, 0.1, 80), 39.6, 0.05, 0, tier.trimColor, Enum.Material.Neon, trim)
+
+		-- Façade derrière le garage : elle monte à chaque niveau, le bâtiment paraît plus grand
+		local height = 16 + level * 8
+		deco("Facade", Vector3.new(84, height, 2), 0, height / 2, -42, tier.wallColor, tier.wallMaterial)
+		local crown = deco("FacadeCrown", Vector3.new(84, 1, 2.4), 0, height + 0.5, -42, tier.trimColor, Enum.Material.Neon)
+		createBillboard(crown, tier.name .. " GARAGE", nil, 4, 40)
+	end
+
+	-- Lampadaires de chaque côté de l'entrée (plus nombreux à chaque niveau)
+	local lampSpots = { { -22, 38 }, { 22, 38 }, { -38, 20 }, { 38, 20 }, { -38, -10 }, { 38, -10 } }
+	for i = 1, math.min(tier.lamps, #lampSpots) do
+		local spot = lampSpots[i]
+		deco("LampPole", Vector3.new(0.6, 12, 0.6), spot[1], 6, spot[2], COLOR_DARK, Enum.Material.Metal)
+		local bulb = deco("LampBulb", Vector3.new(1.6, 1.6, 1.6), spot[1], 12.5, spot[2], tier.trimColor,
+			Enum.Material.Neon, { Shape = Enum.PartType.Ball })
+		local light = Instance.new("PointLight")
+		light.Color = tier.trimColor
+		light.Range = 18
+		light.Brightness = 1.5
+		light.Parent = bulb
+	end
+
+	if level >= 3 then
+		-- Plantes à l'entrée
+		for _, x in ipairs({ -12, 12 }) do
+			deco("Pot", Vector3.new(2.5, 2, 2.5), x, 1, 36, Color3.fromRGB(90, 60, 40), Enum.Material.Wood)
+			deco("Plant", Vector3.new(4, 4, 4), x, 4, 36, Color3.fromRGB(40, 140, 60), Enum.Material.Grass,
+				{ Shape = Enum.PartType.Ball })
+		end
+	end
+
+	if level >= 4 then
+		-- Tapis rouge de l'entrée
+		deco("RedCarpet", Vector3.new(6, 0.1, 30), 0, 0.06, 25, Color3.fromRGB(170, 20, 30), Enum.Material.Fabric)
+	end
+
+	if level >= 5 then
+		-- Paillettes sur l'enseigne
+		local sparkles = Instance.new("Sparkles")
+		sparkles.SparkleColor = tier.trimColor
+		sparkles.Parent = plot.decor:FindFirstChild("FacadeCrown")
+	end
+end
+
 local function getFreePlot()
 	for _, plot in ipairs(plots) do
 		if not plot.owner then
@@ -1078,7 +1201,7 @@ local function assignPlot(plot, player)
 	local data = playerData[player]
 	plot.owner = player
 	data.plot = plot
-	plot.signLabel.Text = player.DisplayName .. "'s Garage"
+	plot.signLabel.Text = displayName(player) .. "'s Garage"
 
 	-- Reconstruit tout ce que le joueur avait acheté (sauvegarde)
 	for _, item in ipairs(Config.Items) do
@@ -1086,6 +1209,7 @@ local function assignPlot(plot, player)
 			buildItem(plot, item)
 		end
 	end
+	applyTheme(plot)
 	refreshButtons(plot)
 	createGamePassPad(plot)
 end
@@ -1107,6 +1231,7 @@ local function releasePlot(plot)
 		plot.rebirthButton = nil
 	end
 	plot.signLabel.Text = "Free Garage"
+	applyTheme(plot)
 end
 
 -- Fait (ré)apparaître le perso dans son garage
@@ -1182,6 +1307,8 @@ end
 -- Arrivée / départ des joueurs
 -- ============================================================
 
+local freeBotPlot -- défini plus bas, dans la partie "Bots" : libère le garage d'un bot
+
 local function onPlayerAdded(player)
 	local data = loadData(player)
 	if not player.Parent then
@@ -1212,7 +1339,7 @@ local function onPlayerAdded(player)
 		end
 	end
 
-	local plot = getFreePlot()
+	local plot = getFreePlot() or (freeBotPlot and freeBotPlot())
 	if not plot then
 		warn("[Tycoon] Plus de garage libre pour", player.Name)
 		player:LoadCharacter()
@@ -1238,6 +1365,192 @@ local function onPlayerRemoving(player)
 		releasePlot(data.plot)
 	end
 	playerData[player] = nil
+end
+
+-- ============================================================
+-- Bots : faux joueurs qui jouent tout seuls (pour voir le jeu à plusieurs)
+-- Ils achètent, font des rebirths et utilisent le marché comme des joueurs.
+-- ============================================================
+
+local BOT_NAMES = { "TurboMax", "NitroLina", "GearBoy", "DriftKing", "PistonPro", "RimQueen" }
+local bots = {} -- [bot] = { plot, character }
+local botsFolder = Instance.new("Folder")
+botsFolder.Name = "Bots"
+botsFolder.Parent = ServerStorage
+
+local function createBotCharacter(bot, plot)
+	local ok, character = pcall(function()
+		local description = Instance.new("HumanoidDescription")
+		local color = Color3.fromHSV(math.random(), 0.6, 0.9)
+		description.HeadColor = Color3.fromRGB(240, 200, 160)
+		description.TorsoColor = color
+		description.LeftArmColor = color
+		description.RightArmColor = color
+		description.LeftLegColor = COLOR_DARK
+		description.RightLegColor = COLOR_DARK
+		return Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
+	end)
+	if not ok or not character or not bots[bot] then
+		return nil
+	end
+	character.Name = bot.Name
+	character:FindFirstChildOfClass("Humanoid").DisplayName = bot.Name .. " [BOT]"
+	character.Parent = workspace
+	character:PivotTo(at(plot, 0, 4, 30))
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root then
+		root:SetNetworkOwner(nil)
+	end
+	return character
+end
+
+-- Le bot marche vers un point (abandonne au bout de quelques secondes s'il est bloqué)
+local function botWalkTo(state, position)
+	local humanoid = state.character and state.character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local arrived = false
+	local connection = humanoid.MoveToFinished:Connect(function()
+		arrived = true
+	end)
+	humanoid:MoveTo(position)
+	local elapsed = 0
+	while not arrived and elapsed < 6 do
+		elapsed += task.wait(0.2)
+	end
+	connection:Disconnect()
+end
+
+local function botBrain(bot, state)
+	while bots[bot] do
+		task.wait(math.random(15, 35) / 10)
+		local plot = state.plot
+		local data = playerData[bot]
+		local cash = getCash(bot)
+		if not bots[bot] or not data or not cash then
+			break
+		end
+
+		-- 1) Acheter le prochain objet abordable
+		local target = nil
+		for _, item in ipairs(Config.Items) do
+			if plot.buttons[item.id] and cash.Value >= item.price then
+				target = item
+				break
+			end
+		end
+
+		if target then
+			botWalkTo(state, at(plot, target.button.X, 3, target.button.Z).Position)
+			if bots[bot] then
+				purchase(plot, bot, target)
+			end
+		elseif plot.rebirthButton and cash.Value >= getRebirthCost(bot) then
+			-- 2) Rebirth quand tout est acheté
+			botWalkTo(state, at(plot, Config.RebirthButton.X, 3, Config.RebirthButton.Z).Position)
+			if bots[bot] then
+				performRebirth(plot, bot)
+			end
+		else
+			-- 3) Utiliser le marché de temps en temps
+			if math.random() < Config.BotMarketChance then
+				local cars = {}
+				for _, item in ipairs(Config.Items) do
+					if item.kind == "car" and data.owned[item.id] then
+						table.insert(cars, item)
+					end
+				end
+				if #cars > 0 then
+					listCar(plot, cars[math.random(#cars)])
+				end
+			end
+			for _, slot in ipairs(slots) do
+				if slot.listing and slot.listing.seller ~= bot and math.random() < Config.BotMarketChance then
+					buyCar(slot, bot)
+					break
+				end
+			end
+			-- 4) Se promener dans son garage
+			botWalkTo(state, at(plot, math.random(-15, 20), 3, math.random(-5, 32)).Position)
+		end
+	end
+end
+
+local function createBot(plot)
+	local used = {}
+	for bot in pairs(bots) do
+		used[bot.Name] = true
+	end
+	local name = "Bot"
+	for _, candidate in ipairs(BOT_NAMES) do
+		if not used[candidate] then
+			name = candidate
+			break
+		end
+	end
+
+	-- Un bot est un simple dossier qui imite un joueur (leaderstats, attributs)
+	local bot = Instance.new("Folder")
+	bot.Name = name
+	bot:SetAttribute("IsBot", true)
+	bot:SetAttribute("CashMultiplier", 1)
+	local leaderstats = Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = bot
+	local cash = Instance.new("IntValue")
+	cash.Name = "Cash"
+	cash.Parent = leaderstats
+	local rebirths = Instance.new("IntValue")
+	rebirths.Name = "Rebirths"
+	rebirths.Parent = leaderstats
+	bot.Parent = botsFolder
+
+	playerData[bot] = { owned = {}, cash = 0, rebirths = 0, loaded = false }
+	local state = { plot = plot }
+	bots[bot] = state
+	assignPlot(plot, bot)
+	task.spawn(function()
+		state.character = createBotCharacter(bot, plot)
+	end)
+	task.spawn(botBrain, bot, state)
+	return bot
+end
+
+local function removeBot(bot)
+	local state = bots[bot]
+	if not state then
+		return
+	end
+	bots[bot] = nil
+	cancelListings(bot)
+	if state.character then
+		state.character:Destroy()
+	end
+	releasePlot(state.plot)
+	playerData[bot] = nil
+	bot:Destroy()
+end
+
+-- Un vrai joueur arrive et tous les garages sont pris : un bot lui laisse sa place
+freeBotPlot = function()
+	for bot, state in pairs(bots) do
+		local plot = state.plot
+		removeBot(bot)
+		return plot
+	end
+	return nil
+end
+
+if Config.BotsEnabled and (RunService:IsStudio() or not Config.BotsOnlyInStudio) then
+	task.delay(3, function()
+		for _ = 1, Config.BotCount do
+			local plot = getFreePlot()
+			if plot then
+				createBot(plot)
+			end
+		end
+	end)
 end
 
 MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)

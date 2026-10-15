@@ -87,3 +87,11 @@ end
 
 cash.Changed:Connect(update)
 update()
+
+-- Notifications envoyées par le serveur (ventes au marché, etc.)
+local StarterGui = game:GetService("StarterGui")
+ReplicatedStorage:WaitForChild("Notify").OnClientEvent:Connect(function(text)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", { Title = "Garage Tycoon", Text = text, Duration = 5 })
+	end)
+end)

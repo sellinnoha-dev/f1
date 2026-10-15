@@ -202,7 +202,10 @@ local DROP_SHAPES = {
 }
 
 -- Crée une pièce à partir d'un modèle de la Boîte à outils, soudé en un seul bloc
-local function makeDropFromAsset(asset, look)
+-- Pièce à partir d'un modèle de la Boîte à outils.
+-- Pour éviter le lag, la physique est gérée par une simple boîte invisible ;
+-- le modèle n'est qu'un "habillage" soudé dessus, sans collisions.
+local function makeDropFromAsset(asset, look, spawnCFrame)
 	local clone = cloneAsset(asset, math.max(look.size.X, look.size.Y, look.size.Z) * 1.4)
 	if not clone then
 		return nil, nil
@@ -212,25 +215,32 @@ local function makeDropFromAsset(asset, look)
 		clone:Destroy()
 		return nil, nil
 	end
-	local root = parts[1]
-	if clone:IsA("Model") then
-		clone.PrimaryPart = clone.PrimaryPart or root
-		root = clone.PrimaryPart
-	end
+
+	local drop = Instance.new("Model")
+	local root = Instance.new("Part")
+	root.Name = "Hitbox"
+	root.Size = look.size
+	root.Transparency = 1
+	root.CFrame = spawnCFrame
+	root.Parent = drop
+	drop.PrimaryPart = root
+
+	-- Centre l'habillage sur la boîte
+	local box = clone:IsA("Model") and clone:GetBoundingBox() or clone.CFrame
+	clone:PivotTo(clone:GetPivot() + (spawnCFrame.Position - box.Position))
 	for _, part in ipairs(parts) do
 		part.Anchored = false
-		part.CanCollide = true
-		if part ~= root then
-			-- Seule la partie principale détecte les contacts : moins de calculs
-			part.Massless = true
-			part.CanTouch = false
-			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = root
-			weld.Part1 = part
-			weld.Parent = root
-		end
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CanQuery = false
+		part.Massless = true
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = root
+		weld.Part1 = part
+		weld.Parent = root
 	end
-	return clone, root
+	clone.Parent = drop
+	return drop, root
 end
 
 local function spawnDrop(plot, item)
@@ -238,15 +248,16 @@ local function spawnDrop(plot, item)
 	local spawnCFrame = at(plot, -25, 5, item.z)
 	local drop, root
 
+	-- Trop de pièces sur le tapis : on attend qu'il se vide (évite le lag)
+	if #plot.drops:GetChildren() >= Config.MaxDropsPerPlot then
+		return
+	end
+
 	local asset = getAsset(item.model)
 	if asset then
-		drop, root = makeDropFromAsset(asset, look)
+		drop, root = makeDropFromAsset(asset, look, spawnCFrame)
 	end
-	if drop then
-		-- Centre le modèle sur le point de sortie de la machine
-		local box = drop:IsA("Model") and drop:GetBoundingBox() or drop.CFrame
-		drop:PivotTo(drop:GetPivot() + (spawnCFrame.Position - box.Position))
-	else
+	if not drop then
 		drop = Instance.new("Part")
 		drop.Shape = look.shape
 		drop.Size = look.size
@@ -424,19 +435,8 @@ local function placeAssetCar(item, model, base)
 	return true
 end
 
--- Voiture de showroom sur un podium qui tourne
-local function buildCar(plot, item, model)
-	local p = item.position -- p.Y = hauteur de l'étage (0 = rez-de-chaussée)
-	local podium = makePart(model, {
-		Name = "Podium", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 12, 12),
-		CFrame = at(plot, p.X, p.Y + 0.5, p.Z) * CFrame.Angles(0, 0, math.rad(90)),
-		Color = COLOR_DARK, Material = Enum.Material.Marble,
-	})
-	if item.income then
-		createBillboard(podium, item.name, "+$" .. formatMoney(item.income) .. "/s", 7, 9)
-	end
-
-	local base = at(plot, p.X, p.Y + 1, p.Z) -- dessus du podium
+-- Pose une voiture (modèle de la Boîte à outils, sinon voiture simple) sur un podium
+local function placeCar(item, model, base)
 	if placeAssetCar(item, model, base) then
 		return
 	end
@@ -480,6 +480,37 @@ local function buildCar(plot, item, model)
 
 	car.WorldPivot = base
 	spinOnPodium(car, base)
+end
+
+local listCar -- défini plus bas, dans la partie "Marché"
+
+-- Voiture de showroom sur son podium
+local function buildCar(plot, item, model)
+	local p = item.position -- p.Y = hauteur de l'étage (0 = rez-de-chaussée)
+	local podium = makePart(model, {
+		Name = "Podium", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 12, 12),
+		CFrame = at(plot, p.X, p.Y + 0.5, p.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = COLOR_DARK, Material = Enum.Material.Marble,
+	})
+	if item.income then
+		createBillboard(podium, item.name, "+$" .. formatMoney(item.income) .. "/s", 7, 9)
+	end
+
+	-- Touche E : mettre la voiture en vente au marché
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Sell at Market"
+	prompt.ObjectText = "Get $" .. formatMoney(math.floor(item.price * Config.MarketSellerBonus))
+	prompt.HoldDuration = 1
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = podium
+	prompt.Triggered:Connect(function(player)
+		if player == plot.owner then
+			listCar(plot, item)
+		end
+	end)
+
+	placeCar(item, model, at(plot, p.X, p.Y + 1, p.Z))
 end
 
 -- Étage VIP : dalle sur la moitié droite du garage, escalier, rambardes et murs
@@ -817,11 +848,222 @@ for i = 1, Config.PlotCount do
 	plots[i] = createPlot(i)
 end
 
--- Place centrale où se rejoignent les routes
-makePart(plotsFolder, {
-	Name = "Plaza", Size = Vector3.new(30, 0.2, 30), CFrame = CFrame.new(0, 0.12, 0),
+-- ============================================================
+-- Marché de voitures (au centre de la carte)
+-- Un joueur y met une de ses voitures ; les autres peuvent l'acheter moins cher
+-- qu'en boutique, et le vendeur touche un bonus. Invendue = elle revient.
+-- ============================================================
+
+local notifyEvent = Instance.new("RemoteEvent")
+notifyEvent.Name = "Notify"
+notifyEvent.Parent = ReplicatedStorage
+
+local function notify(player, text)
+	notifyEvent:FireClient(player, text)
+end
+
+local marketFolder = Instance.new("Folder")
+marketFolder.Name = "CarMarket"
+marketFolder.Parent = workspace
+
+makePart(marketFolder, {
+	Name = "MarketFloor", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 64, 64),
+	CFrame = CFrame.new(0, 0.1, 0) * CFrame.Angles(0, 0, math.rad(90)),
 	Color = Color3.fromRGB(45, 45, 50), Material = Enum.Material.Asphalt,
 })
+local marketSign = makePart(marketFolder, {
+	Name = "MarketSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(0, 14, 0),
+	Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
+})
+createBillboard(marketSign, "CAR MARKET", "Buy cars from other players!", 0, 26)
+
+local slots = {}
+
+local function setSlotLabel(slot, title, subtitle)
+	if slot.label then
+		slot.label:Destroy()
+	end
+	slot.label = createBillboard(slot.podium, title, subtitle, 7, 10)
+end
+
+local function buyPrice(item)
+	return math.floor(item.price * Config.MarketBuyerPrice)
+end
+
+local function clearSlot(slot)
+	slot.listing = nil
+	slot.display:ClearAllChildren()
+	slot.prompt.Enabled = false
+	setSlotLabel(slot, "EMPTY SPOT", "Sell a car from your showroom")
+end
+
+-- Rend une voiture invendue à son propriétaire
+local function returnCar(slot)
+	local listing = slot.listing
+	clearSlot(slot)
+	local seller, item = listing.seller, listing.item
+	local data = playerData[seller]
+	if not data then
+		return
+	end
+	if data.owned[item.id] then
+		-- Il l'a rachetée entre-temps : on le rembourse
+		local cash = getCash(seller)
+		if cash then
+			cash.Value += item.price
+		end
+	elseif data.plot then
+		data.owned[item.id] = true
+		buildItem(data.plot, item)
+		refreshButtons(data.plot)
+	end
+	notify(seller, item.name .. " was not sold and is back in your garage.")
+end
+
+local function buyCar(slot, buyer)
+	local listing = slot.listing
+	if not listing then
+		return
+	end
+	local item, seller = listing.item, listing.seller
+	if buyer == seller then
+		returnCar(slot) -- le vendeur retire sa voiture
+		return
+	end
+	local data = playerData[buyer]
+	local cash = getCash(buyer)
+	if not data or not data.plot or not cash then
+		return
+	end
+	if data.owned[item.id] then
+		notify(buyer, "You already own this car!")
+		return
+	end
+	if item.requires and not data.owned[item.requires] then
+		notify(buyer, "Unlock " .. itemsById[item.requires].name .. " first!")
+		return
+	end
+	local price = buyPrice(item)
+	if cash.Value < price then
+		notify(buyer, "Not enough cash! You need $" .. formatMoney(price))
+		return
+	end
+
+	cash.Value -= price
+	data.owned[item.id] = true
+	buildItem(data.plot, item)
+	refreshButtons(data.plot)
+	clearSlot(slot)
+	notify(buyer, "You bought " .. item.name .. "!")
+
+	local sellerCash = playerData[seller] and getCash(seller)
+	if sellerCash then
+		local earned = math.floor(item.price * Config.MarketSellerBonus)
+		sellerCash.Value += earned
+		notify(seller, buyer.DisplayName .. " bought your " .. item.name .. "! +$" .. formatMoney(earned))
+	end
+end
+
+for i = 1, Config.MarketSlots do
+	local angle = (i - 0.5) * (2 * math.pi / Config.MarketSlots)
+	local position = Vector3.new(math.cos(angle), 0, math.sin(angle)) * 22
+	local podium = makePart(marketFolder, {
+		Name = "MarketSlot" .. i, Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 12, 12),
+		CFrame = CFrame.new(position + Vector3.new(0, 0.8, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = COLOR_DARK, Material = Enum.Material.Marble,
+	})
+	makePart(marketFolder, {
+		Name = "SlotRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.2, 13, 13),
+		CFrame = CFrame.new(position + Vector3.new(0, 0.35, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = COLOR_GOLD, Material = Enum.Material.Neon,
+	})
+	local display = Instance.new("Model")
+	display.Name = "Display"
+	display.Parent = marketFolder
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.HoldDuration = 0.5
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = false
+	prompt.Parent = podium
+
+	local slot = {
+		podium = podium,
+		display = display,
+		prompt = prompt,
+		base = CFrame.lookAt(position + Vector3.new(0, 1.3, 0), Vector3.zero + Vector3.new(0, 1.3, 0)),
+	}
+	prompt.Triggered:Connect(function(player)
+		buyCar(slot, player)
+	end)
+	clearSlot(slot)
+	slots[i] = slot
+end
+
+-- Met une voiture du showroom en vente au marché
+function listCar(plot, item)
+	local seller = plot.owner
+	local data = seller and playerData[seller]
+	if not data or not data.owned[item.id] then
+		return
+	end
+	local freeSlot = nil
+	for _, slot in ipairs(slots) do
+		if not slot.listing then
+			freeSlot = slot
+			break
+		end
+	end
+	if not freeSlot then
+		notify(seller, "The market is full, try again later!")
+		return
+	end
+
+	-- La voiture quitte le showroom du vendeur
+	data.owned[item.id] = nil
+	local carModel = plot.items:FindFirstChild(item.id)
+	if carModel then
+		carModel:Destroy()
+	end
+	refreshButtons(plot)
+
+	freeSlot.listing = { seller = seller, item = item, expires = os.clock() + Config.MarketDuration }
+	placeCar(item, freeSlot.display, freeSlot.base)
+	freeSlot.prompt.ActionText = "Buy for $" .. formatMoney(buyPrice(item))
+	freeSlot.prompt.ObjectText = item.name .. " (seller: " .. seller.DisplayName .. ")"
+	freeSlot.prompt.Enabled = true
+	setSlotLabel(freeSlot, item.name, "$" .. formatMoney(buyPrice(item)) .. "  ·  " .. seller.DisplayName)
+	local minutes = math.floor(Config.MarketDuration / 60 + 0.5)
+	notify(seller, item.name .. " is on the market for " .. minutes .. " min. Sold = +$"
+		.. formatMoney(math.floor(item.price * Config.MarketSellerBonus)) .. "!")
+end
+
+-- Annonces expirées : la voiture revient chez le vendeur
+task.spawn(function()
+	while true do
+		task.wait(1)
+		local now = os.clock()
+		for _, slot in ipairs(slots) do
+			if slot.listing and now >= slot.listing.expires then
+				returnCar(slot)
+			end
+		end
+	end
+end)
+
+-- Le vendeur quitte le jeu : ses voitures en vente lui sont rendues (avant la sauvegarde)
+local function cancelListings(player)
+	local data = playerData[player]
+	for _, slot in ipairs(slots) do
+		if slot.listing and slot.listing.seller == player then
+			if data then
+				data.owned[slot.listing.item.id] = true
+			end
+			clearSlot(slot)
+		end
+	end
+end
 
 local function getFreePlot()
 	for _, plot in ipairs(plots) do
@@ -989,6 +1231,7 @@ local function onPlayerAdded(player)
 end
 
 local function onPlayerRemoving(player)
+	cancelListings(player)
 	saveData(player)
 	local data = playerData[player]
 	if data and data.plot then

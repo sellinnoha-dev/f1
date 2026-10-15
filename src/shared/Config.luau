@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "7 - etage VIP"
+Config.Version = "8 - marche de voitures"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -25,6 +25,15 @@ Config.PlotDistance = 100
 Config.RebirthCost = 150000 -- prix du 1er rebirth (x2 pour le 2e, x3 pour le 3e...)
 Config.RebirthBonus = 0.5 -- +50 % d'argent par rebirth
 Config.RebirthButton = Vector3.new(16, 0, -8)
+
+-- Marché de voitures (centre de la carte)
+Config.MarketSlots = 8 -- nombre d'emplacements de vente
+Config.MarketDuration = 180 -- secondes avant qu'une voiture invendue revienne
+Config.MarketBuyerPrice = 0.8 -- l'acheteur paie 80 % du prix boutique (une bonne affaire)
+Config.MarketSellerBonus = 1.5 -- le vendeur touche 150 % du prix boutique
+
+-- Nombre max de pièces sur un tapis en même temps (limite le lag)
+Config.MaxDropsPerPlot = 30
 
 -- Vitesse du tapis roulant (studs par seconde)
 Config.ConveyorSpeed = 8
@@ -59,14 +68,14 @@ Config.Items = {
 	{
 		id = "dropper1", name = "Bolt Workbench", kind = "dropper",
 		price = 0, requires = nil,
-		value = 2, interval = 1, z = 18, drop = "bolt", model = "Bolt",
+		value = 4, interval = 2, z = 18, drop = "bolt", model = "Bolt",
 		color = Color3.fromRGB(190, 190, 200),
 		button = Vector3.new(0, 0, 24),
 	},
 	{
 		id = "dropper2", name = "Tire Station", kind = "dropper",
 		price = 25, requires = "dropper1",
-		value = 5, interval = 1, z = 10, drop = "tire", model = "Tire",
+		value = 10, interval = 2, z = 10, drop = "tire", model = "Tire",
 		color = Color3.fromRGB(40, 40, 40),
 		button = Vector3.new(8, 0, 24),
 	},
@@ -86,14 +95,14 @@ Config.Items = {
 	{
 		id = "dropper3", name = "Engine Bench", kind = "dropper",
 		price = 400, requires = "paint",
-		value = 12, interval = 1, z = 2, drop = "engine", model = "Engine",
+		value = 24, interval = 2, z = 2, drop = "engine", model = "Engine",
 		color = Color3.fromRGB(90, 90, 100),
 		button = Vector3.new(8, 0, 16),
 	},
 	{
 		id = "dropper4", name = "Body Shop Line", kind = "dropper",
 		price = 1200, requires = "dropper3",
-		value = 30, interval = 1, z = -6, drop = "panel", model = "Panel",
+		value = 60, interval = 2, z = -6, drop = "panel", model = "Panel",
 		color = Color3.fromRGB(30, 90, 200),
 		button = Vector3.new(16, 0, 16),
 	},
@@ -107,7 +116,7 @@ Config.Items = {
 	{
 		id = "dropper5", name = "Rim Factory", kind = "dropper",
 		price = 8000, requires = "dropper4",
-		value = 80, interval = 1, z = -14, drop = "rim", model = "Rim",
+		value = 160, interval = 2, z = -14, drop = "rim", model = "Rim",
 		color = Color3.fromRGB(255, 170, 0),
 		button = Vector3.new(8, 0, 8),
 	},

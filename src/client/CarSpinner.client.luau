@@ -8,6 +8,7 @@ local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 
 local SPEED = math.rad(30) -- degrés par seconde
+local MAX_DISTANCE = 150 -- on ne fait tourner que les voitures proches (moins de calculs)
 
 local cars = {} -- [voiture] = { root, base, offset }
 
@@ -39,6 +40,9 @@ RunService.RenderStepped:Connect(function()
 			state.base = base
 			state.offset = base:ToObjectSpace(root.CFrame)
 		end
-		state.root.CFrame = state.base * rotation * state.offset
+		local camera = workspace.CurrentCamera
+		if camera and (camera.CFrame.Position - state.base.Position).Magnitude < MAX_DISTANCE then
+			state.root.CFrame = state.base * rotation * state.offset
+		end
 	end
 end)

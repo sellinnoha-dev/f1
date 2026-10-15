@@ -45,6 +45,13 @@ local H = game:GetService("HttpService") H.HttpEnabled = true loadstring(H:GetAs
 
 Astuce : la prochaine fois, clique dans la barre de commande et appuie sur **flèche du haut** pour retrouver la ligne.
 
+## Marché de voitures
+
+- Sur un podium de ton showroom, maintiens **E** (« Sell at Market ») : la voiture part sur un emplacement du marché, au centre de la carte.
+- Les autres joueurs l'achètent avec **E** pour 80 % du prix boutique ; toi tu touches **150 %** du prix.
+- Personne ne l'achète en 3 minutes ? Elle revient dans ton garage. Tu peux aussi la reprendre toi-même avec **E**.
+- Pour tester à plusieurs dans Studio : onglet **Test → Clients et serveurs → 2 joueurs → Démarrer**.
+
 ## Utiliser de vrais modèles de la Boîte à outils
 
 Le jeu peut remplacer ses formes simples par des modèles choisis dans la Boîte à outils de Studio.

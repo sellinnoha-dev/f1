@@ -73,11 +73,21 @@ et **ferme l'onglet Config** s'il est ouvert.
 À droite de l'écran : **+$10K**, **+$1M**, **Wave now** (vague dans 3 s), **Spawn Legendary**, **Spawn SECRET**
 (une créature rare apparaît dans la zone COMMON, tout près de la base), **Spawn DIVINE**, **Unlock items**.
 
-## Tes propres créatures
+## Les modèles 3D des créatures (fichier .glb)
 
-Les 18 créatures sont construites par le code (formes + accessoires). Pour en remplacer une par ton modèle :
-crée un dossier **`Assets`** dans **ServerStorage** et range ton modèle dedans avec **exactement** le nom de la créature
-(ex. `Bloop`, `Sir Wobbleton`). Le jeu le met à la bonne taille.
+Les 20 créatures existent en **vrais modèles 3D lisses** dans `models/TsunamiCritters.glb`
+(aperçu : `models/preview.png`). Ils sont fabriqués par `tools/creatures/make_creatures.py`.
+
+Pour les mettre dans le jeu :
+1. Sur GitHub, ouvre `models/TsunamiCritters.glb` puis clique sur **Download raw file**.
+2. Dans Studio : **Accueil → Importer 3D** (ou **Fichier → Importer 3D**), choisis le fichier, puis **Importer**.
+3. Un modèle **TsunamiCritters** apparaît dans le Workspace. Glisse-le dans **ServerStorage → Assets**
+   (crée le dossier `Assets` s'il n'existe pas).
+4. **F5** : le jeu utilise automatiquement chaque modèle à la place de la version en blocs
+   (le nom de chaque morceau = le nom de la créature). Les effets de rareté sont ajoutés par-dessus.
+
+Tu peux aussi remplacer une seule créature par ton propre modèle : range-le dans `Assets` avec exactement
+le nom de la créature (ex. `Bloop`, `Sir Wobbleton`).
 
 ## Réglages
 
@@ -94,4 +104,6 @@ gains des créatures, prix des améliorations.
 | `src/client/WaveClient.client.luau` | L'écran du joueur : argent, alerte, vague animée, panneau de test |
 | `tools/StudioUpdate.luau` | Installe / met à jour les scripts dans Studio |
 | `build/TsunamiCritters.rbxlx` | Le jeu construit avec Rojo |
+| `models/` | Les modèles 3D des créatures (.glb) et leur aperçu |
+| `tools/creatures/make_creatures.py` | Le programme qui fabrique ces modèles |
 | `garage-tycoon/` | L'ancien projet Garage Tycoon (archivé) |

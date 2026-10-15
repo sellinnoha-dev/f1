@@ -804,7 +804,8 @@ end
 
 -- Version "modèle perso" : si un modèle porte le nom de la créature dans ServerStorage > Assets
 local function buildCustomCreature(def)
-	local asset = assetsFolder and assetsFolder:FindFirstChild(def.name)
+	-- Cherche aussi dans les sous-dossiers (ex. le modèle importé "TsunamiCritters" rangé dans Assets)
+	local asset = assetsFolder and assetsFolder:FindFirstChild(def.name, true)
 	if not asset or not (asset:IsA("Model") or asset:IsA("BasePart")) then
 		return nil
 	end
@@ -848,9 +849,76 @@ local function buildCustomCreature(def)
 	return model
 end
 
+-- Effets de rareté sur un modèle perso (les modèles en blocs les ont déjà)
+local function decorateCustom(model, def)
+	local level = rarityIndex[def.rarity] or 1
+	local root = model.PrimaryPart
+	local height = model:GetAttribute("Height") or 3
+	local _, size = model:GetBoundingBox()
+	local width = math.max(size.X, size.Z)
+	local rarity = raritiesById[def.rarity]
+	local function piece(props)
+		props.CanCollide = false
+		props.CanTouch = false
+		props.CanQuery = false
+		props.CastShadow = false
+		props.Anchored = true
+		return makePart(model, props)
+	end
+	local function emitter(texture, color, rate, size, speed, lifetime)
+		local particles = Instance.new("ParticleEmitter")
+		particles.Texture = texture
+		particles.Color = ColorSequence.new(color)
+		particles.Rate = rate
+		particles.Size = NumberSequence.new(size, 0)
+		particles.Speed = NumberRange.new(speed * 0.5, speed)
+		particles.Lifetime = NumberRange.new(lifetime * 0.7, lifetime)
+		particles.SpreadAngle = Vector2.new(180, 180)
+		particles.LightEmission = 1
+		particles.Parent = root
+		return particles
+	end
+	local center = CFrame.new(0, height / 2, 0)
+	if level >= 4 then
+		piece({ Name = "GlowDisc", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.1, width * 1.2, width * 1.2),
+			CFrame = vertical(CFrame.new(0, 0.06, 0)), Color = rarity.color, Material = Enum.Material.Neon, Transparency = 0.35 })
+		emitter("rbxasset://textures/particles/sparkles_main.dds", rarity.color, 8, width * 0.08, 2, 1.5)
+		local light = Instance.new("PointLight")
+		light.Color = rarity.color
+		light.Range = 12
+		light.Brightness = 2.5
+		light.Parent = root
+	end
+	if level >= 5 then
+		local aura = emitter("rbxasset://textures/particles/smoke_main.dds", rarity.color, 12, width * 0.15, 3, 1.4)
+		aura.EmissionDirection = Enum.NormalId.Top
+		aura.SpreadAngle = Vector2.new(25, 25)
+		aura.Transparency = NumberSequence.new(0.5, 1)
+	end
+	if level >= 6 then
+		piece({ Name = "Bubble", Shape = Enum.PartType.Ball, Size = Vector3.one * math.max(width, height) * 1.25, CFrame = center,
+			Color = rarity.color, Material = Enum.Material.ForceField, Transparency = 0 })
+	end
+	if def.rarity == "divine" then
+		piece({ Name = "Aura", Shape = Enum.PartType.Ball, Size = Vector3.one * math.max(width, height) * 1.5, CFrame = center,
+			Color = Color3.fromRGB(255, 120, 255), Material = Enum.Material.ForceField, Transparency = 0 })
+		for i, tilt in ipairs({ 20, -25 }) do
+			piece({ Name = "Aura", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.15, width * (1.1 + i * 0.2), width * (1.1 + i * 0.2)),
+				CFrame = center * CFrame.Angles(math.rad(tilt), 0, math.rad(90)),
+				Color = Color3.new(1, 1, 1), Material = Enum.Material.Neon, Transparency = 0.25 })
+		end
+		emitter("rbxasset://textures/particles/sparkles_main.dds", Color3.new(1, 1, 1), 40, width * 0.1, 6, 2)
+		CollectionService:AddTag(model, "Divine")
+	end
+end
+
 -- Construit la créature puis soude tout à la pièce principale (ancrée seule)
 local function makeCreatureModel(def)
-	local model = buildCustomCreature(def) or buildCreature(def)
+	local custom = buildCustomCreature(def)
+	if custom then
+		decorateCustom(custom, def)
+	end
+	local model = custom or buildCreature(def)
 	local root = model.PrimaryPart
 	for _, part in ipairs(model:GetDescendants()) do
 		if part:IsA("BasePart") and part ~= root then

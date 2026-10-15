@@ -124,6 +124,11 @@ local function getRebirths(player)
 	return rebirths and rebirths.Value or 0
 end
 
+-- Multiplicateur total d'argent : Game Pass x2 et bonus de rebirth
+local function getMultiplier(player)
+	return (player:GetAttribute("CashMultiplier") or 1) * (1 + Config.RebirthBonus * getRebirths(player))
+end
+
 -- ============================================================
 -- Les pièces qui roulent sur le tapis
 -- ============================================================
@@ -277,7 +282,7 @@ local function onCollect(plot, hit)
 	local owner = plot.owner
 	local cash = owner and getCash(owner)
 	if cash then
-		local multiplier = (owner:GetAttribute("CashMultiplier") or 1) * (1 + Config.RebirthBonus * getRebirths(owner))
+		local multiplier = getMultiplier(owner)
 		cash.Value += math.floor(value * multiplier + 0.5)
 	end
 end
@@ -343,9 +348,9 @@ end
 
 local function buildWalls(plot, item, model)
 	local walls = {
-		{ Vector3.new(80, 12, 1), Vector3.new(0, 6, -40) }, -- fond
-		{ Vector3.new(1, 12, 80), Vector3.new(-40, 6, 0) }, -- gauche
-		{ Vector3.new(1, 12, 80), Vector3.new(40, 6, 0) },  -- droite
+		{ Vector3.new(80, 16, 1), Vector3.new(0, 8, -40) }, -- fond
+		{ Vector3.new(1, 16, 80), Vector3.new(-40, 8, 0) }, -- gauche
+		{ Vector3.new(1, 16, 80), Vector3.new(40, 8, 0) },  -- droite
 	}
 	for _, wall in ipairs(walls) do
 		local size, pos = wall[1], wall[2]
@@ -420,14 +425,17 @@ end
 
 -- Voiture de showroom sur un podium qui tourne
 local function buildCar(plot, item, model)
-	local p = item.position
-	makePart(model, {
+	local p = item.position -- p.Y = hauteur de l'étage (0 = rez-de-chaussée)
+	local podium = makePart(model, {
 		Name = "Podium", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 12, 12),
-		CFrame = at(plot, p.X, 0.5, p.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame = at(plot, p.X, p.Y + 0.5, p.Z) * CFrame.Angles(0, 0, math.rad(90)),
 		Color = COLOR_DARK, Material = Enum.Material.Marble,
 	})
+	if item.income then
+		createBillboard(podium, item.name, "+$" .. formatMoney(item.income) .. "/s", 7, 9)
+	end
 
-	local base = at(plot, p.X, 1, p.Z) -- dessus du podium
+	local base = at(plot, p.X, p.Y + 1, p.Z) -- dessus du podium
 	if placeAssetCar(item, model, base) then
 		return
 	end
@@ -473,11 +481,59 @@ local function buildCar(plot, item, model)
 	spinOnPodium(car, base)
 end
 
+-- Étage VIP : dalle sur la moitié droite du garage, escalier, rambardes et murs
+local FLOOR_Y = 16 -- hauteur du sol de l'étage
+
+local function buildUpperFloor(plot, item, model)
+	local function block(name, size, x, y, z, color, material, extra)
+		local props = {
+			Name = name, Size = size, CFrame = at(plot, x, y, z),
+			Color = color, Material = material,
+		}
+		for key, value in pairs(extra or {}) do
+			props[key] = value
+		end
+		return makePart(model, props)
+	end
+	local floorColor = Color3.fromRGB(225, 225, 230)
+	local glass = { Transparency = 0.5 }
+
+	-- Dalle de l'étage et palier en haut de l'escalier
+	block("UpperFloor", Vector3.new(24, 1, 80), 28, FLOOR_Y - 0.5, 0, floorColor, Enum.Material.Marble)
+	block("Landing", Vector3.new(14, 1, 4.5), 9, FLOOR_Y - 0.5, -37.25, floorColor, Enum.Material.Marble)
+
+	-- Escalier contre le mur du fond : 16 marches de 1 stud
+	local steps = 16
+	local depth = 1.6
+	for i = 1, steps do
+		local height = FLOOR_Y * i / steps
+		block("Step", Vector3.new(6, height, depth), 5, height / 2, -12 - (i - 0.5) * depth,
+			COLOR_DARK, Enum.Material.Concrete)
+	end
+
+	-- Piliers sous la dalle
+	for _, z in ipairs({ 36, 4, -24 }) do
+		block("Pillar", Vector3.new(1, FLOOR_Y - 1, 1), 16.5, (FLOOR_Y - 1) / 2, z, COLOR_DARK, Enum.Material.Metal)
+	end
+
+	-- Rambardes en verre et murs de l'étage
+	block("Railing", Vector3.new(0.4, 3, 75), 16.2, FLOOR_Y + 1.5, 2.5, item.color, Enum.Material.Glass, glass)
+	block("Railing", Vector3.new(8, 3, 0.4), 12, FLOOR_Y + 1.5, -35.2, item.color, Enum.Material.Glass, glass)
+	block("Railing", Vector3.new(24, 3, 0.4), 28, FLOOR_Y + 1.5, 39.8, item.color, Enum.Material.Glass, glass)
+	block("UpperWall", Vector3.new(1, 10, 80), 40, FLOOR_Y + 5, 0, Color3.fromRGB(200, 200, 205), Enum.Material.Brick)
+	block("UpperWall", Vector3.new(38, 10, 1), 21, FLOOR_Y + 5, -40, Color3.fromRGB(200, 200, 205), Enum.Material.Brick)
+
+	-- Bande lumineuse et panneau
+	local strip = block("NeonStrip", Vector3.new(0.3, 0.4, 78), 39.4, FLOOR_Y + 9, 0, COLOR_GOLD, Enum.Material.Neon)
+	createBillboard(strip, "VIP SHOWROOM", nil, 2, 16)
+end
+
 local builders = {
 	dropper = buildDropper,
 	upgrader = buildUpgrader,
 	walls = buildWalls,
 	car = buildCar,
+	floor = buildUpperFloor,
 }
 
 local function buildItem(plot, item)
@@ -640,7 +696,7 @@ local function createGamePassPad(plot)
 		return
 	end
 	local pad = makePart(plot.model, {
-		Name = "GamePassPad", Size = Vector3.new(5, 0.6, 5), CFrame = at(plot, 6, 0.3, -14),
+		Name = "GamePassPad", Size = Vector3.new(5, 0.6, 5), CFrame = at(plot, Config.GamePassPad.X, 0.3, Config.GamePassPad.Z),
 		Color = COLOR_GOLD, Material = Enum.Material.Neon,
 	})
 	createBillboard(pad, "2x CASH", "Game Pass", 3, 7)
@@ -962,6 +1018,29 @@ end
 game:BindToClose(function()
 	for _, player in ipairs(Players:GetPlayers()) do
 		saveData(player)
+	end
+end)
+
+-- Revenus des voitures : chaque voiture du showroom rapporte de l'argent chaque seconde
+task.spawn(function()
+	while true do
+		task.wait(1)
+		for _, plot in ipairs(plots) do
+			local owner = plot.owner
+			local data = owner and playerData[owner]
+			local cash = owner and getCash(owner)
+			if data and cash then
+				local income = 0
+				for _, item in ipairs(Config.Items) do
+					if item.income and data.owned[item.id] then
+						income += item.income
+					end
+				end
+				if income > 0 then
+					cash.Value += math.floor(income * getMultiplier(owner) + 0.5)
+				end
+			end
+		end
 	end
 end)
 

@@ -36,17 +36,20 @@ Config.AutosaveInterval = 120
 -- Game Pass "Argent x2" : mets ici l'ID de ton Game Pass (voir README).
 -- 0 = désactivé (le bouton doré n'apparaît pas).
 Config.CashX2GamePassId = 0
+Config.GamePassPad = Vector3.new(-10, 0, 30)
 
 -- ============================================================
 -- Liste des objets à acheter, dans l'ordre de progression.
 --   kind     : "dropper" (fabrique des pièces), "upgrader" (multiplie la valeur),
---              "walls" (décor), "car" (voiture de showroom)
+--              "walls" (décor), "car" (voiture de showroom), "floor" (étage VIP)
 --   requires : l'objet à posséder avant que le bouton apparaisse
 --   value    : argent rapporté par pièce (dropper)
 --   interval : secondes entre deux pièces (dropper)
 --   drop     : forme de la pièce fabriquée : "bolt", "tire", "engine", "panel", "rim"
 --   model    : nom du modèle à utiliser s'il est rangé dans ServerStorage > Assets
 --   z        : position le long du tapis roulant (dropper / upgrader)
+--   income   : argent rapporté chaque seconde (voitures du showroom)
+--   position : emplacement du podium (Y = 16 pour l'étage VIP)
 --   button   : position du bouton d'achat dans le garage
 -- ============================================================
 Config.Items = {
@@ -95,7 +98,7 @@ Config.Items = {
 		id = "car1", name = "Showroom: Sport Car", kind = "car", style = "coupe", model = "SportCar",
 		price = 3000, requires = "dropper4",
 		color = Color3.fromRGB(20, 60, 160),
-		position = Vector3.new(28, 0, 26),
+		position = Vector3.new(28, 0, 26), income = 20,
 		button = Vector3.new(0, 0, 8),
 	},
 	{
@@ -116,28 +119,34 @@ Config.Items = {
 		id = "car2", name = "Showroom: Sport Car 2", kind = "car", style = "coupe", model = "SportCar2",
 		price = 12000, requires = "dropper5",
 		color = Color3.fromRGB(240, 240, 240),
-		position = Vector3.new(28, 0, 12),
+		position = Vector3.new(28, 0, 12), income = 60,
 		button = Vector3.new(0, 0, 0),
 	},
 	{
 		id = "car3", name = "Showroom: Sport Car 3", kind = "car", style = "coupe", model = "SportCar3",
 		price = 30000, requires = "polish",
 		color = Color3.fromRGB(20, 20, 25),
-		position = Vector3.new(28, 0, -2),
+		position = Vector3.new(28, 0, -2), income = 120,
 		button = Vector3.new(8, 0, 0),
 	},
 	{
+		id = "floor2", name = "VIP Upper Floor", kind = "floor",
+		price = 40000, requires = "car3",
+		color = Color3.fromRGB(170, 220, 255),
+		button = Vector3.new(-8, 0, -8),
+	},
+	{
 		id = "car4", name = "Showroom: Supercar", kind = "car", style = "super", model = "Supercar",
-		price = 60000, requires = "car3",
+		price = 60000, requires = "floor2",
 		color = Color3.fromRGB(230, 30, 30),
-		position = Vector3.new(28, 0, -16),
+		position = Vector3.new(28, 16, -16), income = 250,
 		button = Vector3.new(16, 0, 0),
 	},
 	{
 		id = "car5", name = "Showroom: Hypercar", kind = "car", style = "super", model = "Supercar2",
 		price = 120000, requires = "car4",
 		color = Color3.fromRGB(255, 190, 0),
-		position = Vector3.new(28, 0, -30),
+		position = Vector3.new(28, 16, -30), income = 600,
 		button = Vector3.new(0, 0, -8),
 	},
 }

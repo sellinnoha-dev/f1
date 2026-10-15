@@ -18,7 +18,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "15 - rarete des voitures"
+local EXPECTED_CONFIG_VERSION = "16 - logos retires"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -218,11 +218,29 @@ local function getAsset(name)
 	return name and folder and folder:FindFirstChild(name)
 end
 
--- Copie un modèle sans ses scripts (sécurité) ni ses sons, et le met à la bonne taille
+-- Un élément ressemble-t-il à un logo de marque ? (autocollant, texte, pièce "Logo"...)
+local LOGO_WORDS = { "logo", "badge", "emblem", "brand", "decal", "plate", "sticker" }
+local function looksLikeLogo(instance)
+	if instance:IsA("Decal") or instance:IsA("SurfaceGui") then
+		return true -- les logos et plaques sont presque toujours des autocollants
+	end
+	if instance:IsA("BasePart") then
+		local name = instance.Name:lower()
+		for _, word in ipairs(LOGO_WORDS) do
+			if name:find(word, 1, true) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- Copie un modèle sans ses scripts (sécurité), ses sons ni ses logos, et le met à la bonne taille
 local function cloneAsset(asset, targetSize)
 	local clone = asset:Clone()
 	for _, descendant in ipairs(clone:GetDescendants()) do
-		if descendant:IsA("LuaSourceContainer") or descendant:IsA("Sound") then
+		if descendant.Parent and (descendant:IsA("LuaSourceContainer") or descendant:IsA("Sound")
+			or (Config.RemoveLogos and looksLikeLogo(descendant))) then
 			descendant:Destroy()
 		end
 	end

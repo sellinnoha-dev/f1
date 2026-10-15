@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "15 - rarete des voitures"
+Config.Version = "16 - logos retires"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -141,6 +141,10 @@ Config.Cars = {
 	{ id = "neon", name = "Neon Ghost", rarity = "extreme", model = "Extreme2", style = "super",
 		price = 2500000, income = 8000, color = Color3.fromRGB(0, 255, 220) },
 }
+
+-- Retire automatiquement les logos des modèles de voitures (autocollants et pièces
+-- nommées Logo, Badge, Emblem...). Les logos dessinés directement dans la carrosserie restent.
+Config.RemoveLogos = true
 
 -- Places de parking du garage (requires = objet de la boutique qui la débloque)
 Config.CarSlots = {

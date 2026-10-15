@@ -1,22 +1,27 @@
 -- ============================================================
--- Garage Tycoon : mise à jour depuis GitHub, sans Rojo.
--- À lancer depuis la barre de commande de Roblox Studio (jeu ARRÊTÉ) :
---   la ligne à coller est dans le README, section "Mettre à jour le jeu".
--- Remplace le code des scripts par la dernière version du dépôt.
--- Ne touche pas à tes modèles (ServerStorage > Assets) ni au reste de la carte.
+-- Tsunami Critters : installe / met à jour le jeu depuis GitHub, sans Rojo.
+-- À lancer depuis la barre de commande de Roblox Studio (jeu ARRÊTÉ),
+-- dans une NOUVELLE place "Baseplate" (pas dans Garage Tycoon).
+-- Ne touche pas à tes modèles (ServerStorage > Assets).
 -- ============================================================
 
 local HttpService = game:GetService("HttpService")
+local ServerScriptService = game:GetService("ServerScriptService")
 local BASE = "https://raw.githubusercontent.com/sellinnoha-dev/f1/main/src/"
 local API = "https://api.github.com/repos/sellinnoha-dev/f1/contents/src/"
+
+-- Sécurité : on ne mélange pas les deux jeux
+if ServerScriptService:FindFirstChild("TycoonServer") then
+	warn("[Tsunami] Tu es dans la place de Garage Tycoon ! Ouvre une NOUVELLE place (Fichier > Nouveau > Baseplate), puis relance la ligne.")
+	return
+end
 
 -- { fichier sur GitHub, service, nom dans Studio, type de script }
 local FILES = {
 	{ "shared/Config.luau", game:GetService("ReplicatedStorage"), "Config", "ModuleScript" },
 	{ "shared/FormatMoney.luau", game:GetService("ReplicatedStorage"), "FormatMoney", "ModuleScript" },
-	{ "server/TycoonServer.server.luau", game:GetService("ServerScriptService"), "TycoonServer", "Script" },
-	{ "client/CashHud.client.luau", game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"), "CashHud", "LocalScript" },
-	{ "client/CarSpinner.client.luau", game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"), "CarSpinner", "LocalScript" },
+	{ "server/WaveServer.server.luau", ServerScriptService, "WaveServer", "Script" },
+	{ "client/WaveClient.client.luau", game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"), "WaveClient", "LocalScript" },
 }
 
 local stamp = tostring(os.time())
@@ -36,6 +41,7 @@ local function fetch(path)
 	end
 	return HttpService:GetAsync(BASE .. path .. "?v=" .. stamp, true)
 end
+
 local updated = 0
 for _, file in ipairs(FILES) do
 	local path, parent, name, className = file[1], file[2], file[3], file[4]
@@ -53,11 +59,11 @@ for _, file in ipairs(FILES) do
 		script.Source = source
 		updated += 1
 	else
-		warn("[Garage Tycoon] Impossible de télécharger " .. path .. " : " .. tostring(source))
+		warn("[Tsunami] Impossible de télécharger " .. path .. " : " .. tostring(source))
 	end
 end
 
 local config = game:GetService("ReplicatedStorage"):FindFirstChild("Config")
 local version = config and config.Source:match('Config.Version = "([^"]*)"') or "?"
-print(string.format("[Garage Tycoon] Mise à jour terminée : %d/%d scripts à jour (version %s). Fais Ctrl+S puis F5.",
+print(string.format("[Tsunami] Mise à jour terminée : %d/%d scripts à jour (version %s). Fais Ctrl+S puis F5.",
 	updated, #FILES, version))

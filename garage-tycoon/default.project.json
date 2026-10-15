@@ -1,0 +1,122 @@
+{
+  "name": "GarageTycoon",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Config": {
+        "$path": "src/shared/Config.luau"
+      },
+      "FormatMoney": {
+        "$path": "src/shared/FormatMoney.luau"
+      }
+    },
+    "ServerScriptService": {
+      "TycoonServer": {
+        "$path": "src/server/TycoonServer.server.luau"
+      }
+    },
+    "Workspace": {
+      "Baseplate": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Locked": true,
+          "Size": [
+            680,
+            16,
+            680
+          ],
+          "Color": [
+            0.3,
+            0.55,
+            0.25
+          ],
+          "Material": "Grass",
+          "CFrame": {
+            "CFrame": {
+              "position": [
+                0,
+                -8,
+                0
+              ],
+              "orientation": [
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  1,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ]
+            }
+          }
+        }
+      },
+      "SpawnLocation": {
+        "$className": "SpawnLocation",
+        "$properties": {
+          "Anchored": true,
+          "Size": [
+            12,
+            1,
+            12
+          ],
+          "CFrame": {
+            "CFrame": {
+              "position": [
+                0,
+                0.5,
+                0
+              ],
+              "orientation": [
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  1,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ]
+            }
+          }
+        }
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "CashHud": {
+          "$path": "src/client/CashHud.client.luau"
+        },
+        "CarSpinner": {
+          "$path": "src/client/CarSpinner.client.luau"
+        }
+      }
+    },
+    "Players": {
+      "$properties": {
+        "CharacterAutoLoads": false
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "ClockTime": 14.5
+      }
+    }
+  }
+}

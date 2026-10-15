@@ -6,7 +6,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "5 - vrai shop"
+Config.Version = "6 - objets sans verrou"
 Config.GameName = "Tsunami Critters"
 
 Config.StartingCash = 0
@@ -140,18 +140,18 @@ Config.BotCount = 3
 
 -- ============================================================
 -- OBJETS (boutique au fond de la zone des bases). Un objet = une utilisation.
--- requires = rareté qu'il faut avoir déjà obtenue pour le débloquer
+-- (option) requires = rareté qu'il faut avoir déjà obtenue pour le débloquer, ex. requires = "epic"
 -- ============================================================
 Config.Items = {
-	{ id = "teleport", name = "Home Teleport", requires = "common", price = 1500,
+	{ id = "teleport", name = "Home Teleport", price = 1500,
 		color = Color3.fromRGB(200, 120, 255), description = "Teleport home with the critters you carry" },
-	{ id = "shield", name = "Bubble Shield", requires = "common", price = 4000, duration = 20,
+	{ id = "shield", name = "Bubble Shield", price = 4000, duration = 20,
 		color = Color3.fromRGB(90, 200, 255), description = "The wave can't hurt you for 20s" },
-	{ id = "cloak", name = "Invisibility Cloak", requires = "rare", price = 5000, duration = 12,
+	{ id = "cloak", name = "Invisibility Cloak", price = 5000, duration = 12,
 		color = Color3.fromRGB(170, 200, 255), description = "Invisible for 12s" },
-	{ id = "freeze", name = "Freeze Ray", requires = "epic", price = 25000, duration = 4, range = 45,
+	{ id = "freeze", name = "Freeze Ray", price = 25000, duration = 4, range = 45,
 		color = Color3.fromRGB(120, 230, 255), description = "Freeze the closest player for 4s" },
-	{ id = "raidkey", name = "Raid Key", requires = "legendary", price = 100000, duration = 20,
+	{ id = "raidkey", name = "Raid Key", price = 100000, duration = 20,
 		color = Color3.fromRGB(255, 200, 40), description = "Enter another base for 20s and steal a critter" },
 }
 

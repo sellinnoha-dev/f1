@@ -750,7 +750,7 @@ function shopBuilders.ITEMS()
 		textLabel(frame, { Position = UDim2.fromOffset(8, 100), Size = UDim2.new(1, -16, 0, 24), Text = item.name })
 		textLabel(frame, { Position = UDim2.fromOffset(8, 124), Size = UDim2.new(1, -16, 0, 34), Text = item.description,
 			TextColor3 = Color3.fromRGB(200, 210, 230), Font = Enum.Font.FredokaOne, TextWrapped = true })
-		local needed = rarityIndex[item.requires] or 1
+		local needed = item.requires and rarityIndex[item.requires] or 0
 		local count = player:GetAttribute("Item_" .. item.id) or 0
 		if best < needed then
 			local rarity = raritiesById[item.requires]

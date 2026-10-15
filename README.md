@@ -37,10 +37,10 @@ Réglages : `Config.BotsEnabled`, `Config.BotCount`, `Config.BotsOnlyInStudio`.
 
 Dans `Config.GamePasses` : 2x Cash, +2 Carry, Speed Boost. Crée chaque pass sur le Creator Dashboard
 (**Monetization → Passes**), puis remplace `id = 0` par son numéro. Tant que c'est 0, le bouton affiche « coming soon ».
-   - **Invisibility Cloak** (débloqué avec une créature RARE) : invisible 12 s (tu te vois en fantôme,
+   - **Invisibility Cloak** : invisible 12 s (tu te vois en fantôme,
      bouton **REAPPEAR** pour revenir avant la fin).
-   - **Freeze Ray** (EPIC) : gèle le joueur le plus proche pendant 4 s.
-   - **Raid Key** (LEGENDARY) : 20 s pour traverser le mur d'énergie d'une autre base et voler une créature
+   - **Freeze Ray** : gèle le joueur le plus proche pendant 4 s.
+   - **Raid Key** : 20 s pour traverser le mur d'énergie d'une autre base et voler une créature
      (maintiens E dessus). Si le voleur meurt, la créature revient à son propriétaire.
 
 ## Ajouter de la musique (et des sons)

@@ -1878,7 +1878,7 @@ local function buyItem(player, item)
 	if not data or not cash then
 		return
 	end
-	local needed = rarityIndex[item.requires] or 1
+	local needed = item.requires and rarityIndex[item.requires] or 0
 	if (data.best or 0) < needed then
 		notify(player, item.name .. " is locked: get a " .. raritiesById[item.requires].name .. " critter first!")
 		return
@@ -1966,7 +1966,8 @@ do
 		display:PivotTo(CFrame.new(shopX, 5.5, z))
 		display.Parent = map
 		makeBobbing(display)
-		createBillboard(display.PrimaryPart, item.name, "$" .. formatMoney(item.price) .. "  ·  needs " .. raritiesById[item.requires].name,
+		createBillboard(display.PrimaryPart, item.name, "$" .. formatMoney(item.price)
+			.. (item.requires and ("  ·  needs " .. raritiesById[item.requires].name) or ""),
 			3, 11, item.color, 60)
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.ActionText = "Buy $" .. formatMoney(item.price)

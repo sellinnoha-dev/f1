@@ -13,6 +13,7 @@ local Lighting = game:GetService("Lighting")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
+local ItemModels = require(ReplicatedStorage:WaitForChild("ItemModels"))
 
 print("[Tsunami] Version " .. tostring(Config.Version))
 
@@ -75,7 +76,7 @@ local function createBillboard(part, title, subtitle, offsetY, width, titleColor
 		label.Position = UDim2.fromScale(0, posY)
 		label.Size = UDim2.fromScale(1, height)
 		label.BackgroundTransparency = 1
-		label.Font = Enum.Font.GothamBlack
+		label.Font = Enum.Font.FredokaOne
 		label.TextScaled = true
 		label.TextColor3 = color
 		label.TextStrokeTransparency = 0
@@ -300,19 +301,101 @@ local function buildCreature(def)
 		top += s * 0.35
 	end
 
-	-- Effets des grandes raretés
+	if extras.cape then
+		piece({ Name = "Cape", Size = Vector3.new(s * 0.95, height * 0.85, s * 0.08),
+			CFrame = CFrame.new(0, height * 0.48, s * 0.5) * CFrame.Angles(math.rad(-10), 0, 0),
+			Color = accent, Material = Enum.Material.Fabric })
+		piece({ Name = "CapeClasp", Shape = Enum.PartType.Ball, Size = Vector3.one * s * 0.16,
+			CFrame = CFrame.new(0, height * 0.88, s * 0.4), Color = Color3.fromRGB(255, 200, 30), Material = Enum.Material.Metal })
+	end
+	if extras.staff then
+		piece({ Name = "Staff", Shape = Enum.PartType.Cylinder, Size = Vector3.new(height * 1.4, s * 0.1, s * 0.1),
+			CFrame = vertical(CFrame.new(s * 0.72, height * 0.7, -s * 0.1)), Color = Color3.fromRGB(110, 70, 40), Material = Enum.Material.Wood })
+		local orb = piece({ Name = "StaffOrb", Shape = Enum.PartType.Ball, Size = Vector3.one * s * 0.32,
+			CFrame = CFrame.new(s * 0.72, height * 1.42, -s * 0.1), Color = accent, Material = Enum.Material.Neon })
+		local orbLight = Instance.new("PointLight")
+		orbLight.Color = accent
+		orbLight.Range = 8
+		orbLight.Parent = orb
+	end
+	if extras.monocle then
+		piece({ Name = "Monocle", Shape = Enum.PartType.Cylinder, Size = Vector3.new(s * 0.03, s * 0.36, s * 0.36),
+			CFrame = CFrame.new(eyeX[#eyeX] * s, eyeY, front - s * 0.17) * CFrame.Angles(0, math.rad(90), 0),
+			Color = Color3.fromRGB(255, 200, 30), Material = Enum.Material.Glass, Transparency = 0.4 })
+	end
+	if extras.tail then
+		piece({ Name = "Tail", Shape = Enum.PartType.Cylinder, Size = Vector3.new(s * 0.7, s * 0.18, s * 0.18),
+			CFrame = CFrame.new(0, height * 0.25, s * 0.65) * CFrame.Angles(0, math.rad(90), math.rad(30)), Color = look.color })
+		piece({ Name = "TailTip", Shape = Enum.PartType.Ball, Size = Vector3.one * s * 0.28,
+			CFrame = CFrame.new(0, height * 0.42, s * 0.95), Color = accent, Material = Enum.Material.Neon })
+	end
+	if extras.flames then
+		local burner = piece({ Name = "Burner", Size = Vector3.one * s * 0.3, CFrame = CFrame.new(0, height * 0.45, s * 0.7),
+			Transparency = 1 })
+		local fire = Instance.new("Fire")
+		fire.Color = accent
+		fire.SecondaryColor = Color3.fromRGB(255, 240, 120)
+		fire.Size = s * 0.9
+		fire.Heat = 8
+		fire.Parent = burner
+	end
+	if extras.orbit then
+		for i = 0, 3 do
+			local angle = i / 4 * 2 * math.pi
+			piece({ Name = "OrbitGem", Shape = Enum.PartType.Ball, Size = Vector3.one * s * 0.2,
+				CFrame = CFrame.new(math.cos(angle) * s * 0.9, height * 0.5 + math.sin(angle * 2) * s * 0.2, math.sin(angle) * s * 0.9),
+				Color = accent, Material = Enum.Material.Neon })
+		end
+	end
+
+	-- Effets des grandes raretés : plus c'est rare, plus ça brille
 	local level = rarityIndex[def.rarity] or 1
+	local function emitter(texture, color, rate, size, speed, lifetime)
+		local particles = Instance.new("ParticleEmitter")
+		particles.Texture = texture
+		particles.Color = ColorSequence.new(color)
+		particles.Rate = rate
+		particles.Size = NumberSequence.new(size, 0)
+		particles.Speed = NumberRange.new(speed * 0.5, speed)
+		particles.Lifetime = NumberRange.new(lifetime * 0.7, lifetime)
+		particles.SpreadAngle = Vector2.new(180, 180)
+		particles.LightEmission = 1
+		particles.Parent = body
+		return particles
+	end
 	if level >= 4 then
+		-- Disque lumineux sous les pieds + paillettes + lumière
+		piece({ Name = "GlowDisc", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.1, s * (level >= 5 and 1.9 or 1.5), s * (level >= 5 and 1.9 or 1.5)),
+			CFrame = vertical(CFrame.new(0, 0.06, 0)), Color = rarity.color, Material = Enum.Material.Neon, Transparency = 0.35 })
+		emitter("rbxasset://textures/particles/sparkles_main.dds", rarity.color, 8, s * 0.25, 2, 1.5)
 		local light = Instance.new("PointLight")
 		light.Color = rarity.color
-		light.Range = 10
-		light.Brightness = 2
+		light.Range = 12
+		light.Brightness = 2.5
 		light.Parent = body
 	end
 	if level >= 5 then
-		local sparkles = Instance.new("Sparkles")
-		sparkles.SparkleColor = rarity.color
-		sparkles.Parent = body
+		-- Aura qui monte autour de la créature
+		local aura = emitter("rbxasset://textures/particles/smoke_main.dds", rarity.color, 12, s * 0.5, 3, 1.4)
+		aura.EmissionDirection = Enum.NormalId.Top
+		aura.SpreadAngle = Vector2.new(25, 25)
+		aura.Transparency = NumberSequence.new(0.5, 1)
+	end
+	if level >= 6 then
+		piece({ Name = "Bubble", Shape = Enum.PartType.Ball, Size = Vector3.one * s * 1.7, CFrame = CFrame.new(0, height * 0.5, 0),
+			Color = rarity.color, Material = Enum.Material.ForceField, Transparency = 0 })
+	end
+	if def.rarity == "divine" then
+		-- Divine : bulle arc-en-ciel, anneaux, tempête de paillettes (les couleurs bougent côté joueur)
+		piece({ Name = "Aura", Shape = Enum.PartType.Ball, Size = Vector3.one * s * 2.2, CFrame = CFrame.new(0, height * 0.5, 0),
+			Color = Color3.fromRGB(255, 120, 255), Material = Enum.Material.ForceField, Transparency = 0 })
+		for i, tilt in ipairs({ 20, -25 }) do
+			piece({ Name = "Aura", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.15, s * (1.5 + i * 0.3), s * (1.5 + i * 0.3)),
+				CFrame = CFrame.new(0, height * 0.5, 0) * CFrame.Angles(math.rad(tilt), 0, math.rad(90)),
+				Color = Color3.new(1, 1, 1), Material = Enum.Material.Neon, Transparency = 0.25 })
+		end
+		emitter("rbxasset://textures/particles/sparkles_main.dds", Color3.new(1, 1, 1), 40, s * 0.35, 6, 2)
+		CollectionService:AddTag(model, "Divine")
 	end
 
 	model.PrimaryPart = body
@@ -621,17 +704,31 @@ local function createPlot(index)
 		Color = plot.color, Material = Enum.Material.SmoothPlastic,
 	})
 	for _, x in ipairs({ -22.5, 22.5 }) do
+		-- Murs de côté : trop hauts pour sauter par-dessus
 		makePart(model, {
-			Name = "SideFence", Size = Vector3.new(1, 3, 44), CFrame = at(plot, x, 1.5, 0),
-			Color = Color3.fromRGB(240, 240, 245), Material = Enum.Material.SmoothPlastic,
+			Name = "SideWall", Size = Vector3.new(1, 12, 44), CFrame = at(plot, x, 6, 0),
+			Color = Color3.fromRGB(200, 225, 240), Material = Enum.Material.Glass, Transparency = 0.45,
+		})
+		makePart(model, {
+			Name = "WallTrim", Size = Vector3.new(1.4, 0.6, 44.6), CFrame = at(plot, x, 12.2, 0),
+			Color = plot.color, Material = Enum.Material.Neon,
 		})
 	end
-	-- Barrière de protection à l'entrée (seule une Raid Key permet de passer)
+	-- Mur d'énergie à l'entrée : il bloque tout le monde, sauf le propriétaire et
+	-- ceux qui ont une Raid Key active (la collision est réglée chez chaque joueur, voir WaveClient)
+	for _, x in ipairs({ -22.5, 22.5 }) do
+		makePart(model, {
+			Name = "GatePost", Size = Vector3.new(1.6, 13, 1.6), CFrame = at(plot, x, 6.5, -22.5),
+			Color = Color3.fromRGB(40, 40, 50), Material = Enum.Material.Metal,
+		})
+	end
 	plot.barrier = makePart(model, {
-		Name = "Barrier", Size = Vector3.new(44, 10, 0.4), CFrame = at(plot, 0, 5, -22.5),
-		Color = plot.color, Material = Enum.Material.ForceField, Transparency = 0.2,
+		Name = "Barrier", Size = Vector3.new(44, 12, 0.6), CFrame = at(plot, 0, 6, -22.5),
+		Color = plot.color, Material = Enum.Material.ForceField, Transparency = 1,
 		CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
 	})
+	plot.barrier:SetAttribute("OwnerId", 0)
+	CollectionService:AddTag(plot.barrier, "BaseBarrier")
 	local signPart = makePart(model, {
 		Name = "Sign", Size = Vector3.new(1, 1, 1), CFrame = at(plot, 0, 15, 22),
 		Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
@@ -979,6 +1076,7 @@ local function nearTrench(x, margin)
 	return false
 end
 
+local placeGroundCreature -- défini juste en dessous
 local function spawnCreature(zoneIndex, forcedDef, fromX, toX)
 	local zone = Config.Zones[zoneIndex]
 	local x
@@ -993,10 +1091,16 @@ local function spawnCreature(zoneIndex, forcedDef, fromX, toX)
 		return
 	end
 	local def = forcedDef or rollCreature(zoneIndex)
-	local model = makeCreatureModel(def)
 	local z = math.random(-HALF_WIDTH + 6, HALF_WIDTH - 6)
-	model:PivotTo(CFrame.new(x, 0.2, z) * CFrame.Angles(0, math.rad(math.random(-60, 60)) + math.pi / 2, 0))
+	return placeGroundCreature(def, Vector3.new(x, 0.2, z), zoneIndex)
+end
+
+-- Pose une créature au sol (attrapable avec E)
+function placeGroundCreature(def, position, zoneIndex)
+	local model = makeCreatureModel(def)
+	model:PivotTo(CFrame.new(position) * CFrame.Angles(0, math.rad(math.random(-60, 60)) + math.pi / 2, 0))
 	model.Parent = creatureFolder
+	local x = position.X
 	makeBobbing(model)
 	creatureLabel(model, def)
 	local entry = { def = def, model = model, zone = zoneIndex, x = x }
@@ -1060,31 +1164,10 @@ local function spawnDivine(forcedDef)
 		weld.Parent = part
 		return part
 	end
-	local center = root.CFrame
-	auraPart({ Name = "Aura", Shape = Enum.PartType.Ball, Size = Vector3.one * 11, CFrame = center,
-		Material = Enum.Material.ForceField, Color = Color3.fromRGB(255, 120, 255), Transparency = 0 })
-	auraPart({ Name = "Aura", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 13, 13),
-		CFrame = vertical(CFrame.new(center.Position - Vector3.new(0, 2, 0))), Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(255, 255, 255), Transparency = 0.3 })
+	-- Colonne de lumière visible de loin
 	auraPart({ Name = "Aura", Shape = Enum.PartType.Cylinder, Size = Vector3.new(300, 3, 3),
-		CFrame = vertical(CFrame.new(center.Position + Vector3.new(0, 150, 0))), Material = Enum.Material.Neon,
+		CFrame = vertical(CFrame.new(root.Position + Vector3.new(0, 150, 0))), Material = Enum.Material.Neon,
 		Color = Color3.fromRGB(255, 255, 255), Transparency = 0.55 })
-	local light = Instance.new("PointLight")
-	light.Range = 30
-	light.Brightness = 5
-	light.Parent = root
-	for _, texture in ipairs({ "rbxasset://textures/particles/sparkles_main.dds", "rbxasset://textures/particles/fire_main.dds" }) do
-		local particles = Instance.new("ParticleEmitter")
-		particles.Texture = texture
-		particles.Rate = 25
-		particles.Lifetime = NumberRange.new(1, 2)
-		particles.Speed = NumberRange.new(3, 8)
-		particles.SpreadAngle = Vector2.new(180, 180)
-		particles.Size = NumberSequence.new(1.2, 0)
-		particles.LightEmission = 1
-		particles.Parent = root
-	end
-	CollectionService:AddTag(entry.model, "Divine")
 	workspace:SetAttribute("DivineName", def.name)
 	workspace:SetAttribute("DivineAt", workspace:GetServerTimeNow())
 	notifyAll("A DIVINE " .. def.name .. " appeared right in front of the bases!!!")
@@ -1339,13 +1422,42 @@ task.spawn(function()
 	end
 end)
 
--- Rend un personnage invisible (sauf les créatures qu'il porte), puis visible
-local function setInvisible(character, invisible)
+-- Petit nuage de fumée (disparition / réapparition)
+local function poof(position, color)
+	local holder = makePart(workspace, {
+		Name = "Poof", Size = Vector3.one, CFrame = CFrame.new(position), Transparency = 1,
+		CanCollide = false, CanQuery = false, CanTouch = false,
+	})
+	local smoke = Instance.new("ParticleEmitter")
+	smoke.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	smoke.Color = ColorSequence.new(color)
+	smoke.Size = NumberSequence.new(3, 6)
+	smoke.Transparency = NumberSequence.new(0.2, 1)
+	smoke.Lifetime = NumberRange.new(0.6, 1)
+	smoke.Speed = NumberRange.new(6, 12)
+	smoke.SpreadAngle = Vector2.new(180, 180)
+	smoke.Rate = 0
+	smoke.Parent = holder
+	smoke:Emit(40)
+	task.delay(2, function()
+		holder:Destroy()
+	end)
+end
+
+-- Rend un personnage invisible pour les autres (sauf les créatures qu'il porte)
+local invisibleUntil = {} -- [joueur] = os.clock() de fin
+local function setInvisible(player, invisible)
+	local character = player.Character
+	if not character then
+		return
+	end
 	for _, descendant in ipairs(character:GetDescendants()) do
 		if (descendant:IsA("BasePart") or descendant:IsA("Decal")) and descendant.Name ~= "HumanoidRootPart"
 			and not descendant:FindFirstAncestor("CarriedCritters") then
 			if invisible then
-				descendant:SetAttribute("OriginalTransparency", descendant.Transparency)
+				if descendant:GetAttribute("OriginalTransparency") == nil then
+					descendant:SetAttribute("OriginalTransparency", descendant.Transparency)
+				end
 				descendant.Transparency = 1
 			elseif descendant:GetAttribute("OriginalTransparency") ~= nil then
 				descendant.Transparency = descendant:GetAttribute("OriginalTransparency")
@@ -1358,6 +1470,16 @@ local function setInvisible(character, invisible)
 		humanoid.DisplayDistanceType = invisible and Enum.HumanoidDisplayDistanceType.None
 			or Enum.HumanoidDisplayDistanceType.Viewer
 	end
+	local root = getRoot(player)
+	if root then
+		poof(root.Position, Color3.fromRGB(190, 160, 255))
+	end
+	if invisible then
+		player:SetAttribute("InvisibleUntil", workspace:GetServerTimeNow() + itemsById.cloak.duration)
+	else
+		invisibleUntil[player] = nil
+		player:SetAttribute("InvisibleUntil", 0)
+	end
 end
 
 local function freezePlayer(target, duration)
@@ -1366,6 +1488,7 @@ local function freezePlayer(target, duration)
 		return
 	end
 	root.Anchored = true
+	target:SetAttribute("FrozenUntil", workspace:GetServerTimeNow() + duration)
 	local ice = makePart(workspace, {
 		Name = "Ice", Size = Vector3.new(5, 7, 5), CFrame = root.CFrame * CFrame.new(0, -0.5, 0),
 		Color = Color3.fromRGB(150, 230, 255), Material = Enum.Material.Ice, Transparency = 0.35,
@@ -1379,19 +1502,40 @@ local function freezePlayer(target, duration)
 	end)
 end
 
--- Utiliser un objet : renvoie true s'il a servi (il disparaît alors)
+-- Rayon de glace visible entre le tireur et la cible
+local function iceBeam(from, to)
+	local distance = (to - from).Magnitude
+	local beam = makePart(workspace, {
+		Name = "IceBeam", Size = Vector3.new(0.5, 0.5, distance),
+		CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -distance / 2),
+		Color = Color3.fromRGB(120, 240, 255), Material = Enum.Material.Neon,
+		CanCollide = false, CanQuery = false, CanTouch = false,
+	})
+	task.delay(0.35, function()
+		beam:Destroy()
+	end)
+end
+
+-- Utiliser un objet : renvoie true s'il a servi (on en retire alors un du stock)
 local function useItem(player, item)
 	local character = player.Character
 	local root = getRoot(player)
-	if not character or not root then
+	local humanoid = getHumanoid(player)
+	if not character or not root or not humanoid or humanoid.Health <= 0 then
 		return false
 	end
 	if item.id == "cloak" then
-		setInvisible(character, true)
-		notify(player, "You are invisible for " .. item.duration .. "s!")
+		if invisibleUntil[player] then
+			notify(player, "You are already invisible!")
+			return false
+		end
+		local untilTime = os.clock() + item.duration
+		invisibleUntil[player] = untilTime
+		setInvisible(player, true)
+		notify(player, "You are invisible for " .. item.duration .. "s! (press REAPPEAR to come back)")
 		task.delay(item.duration, function()
-			if character.Parent then
-				setInvisible(character, false)
+			if invisibleUntil[player] == untilTime and player.Character == character then
+				setInvisible(player, false)
 				notify(player, "You are visible again.")
 			end
 		end)
@@ -1400,8 +1544,8 @@ local function useItem(player, item)
 		local target, best = nil, item.range
 		for _, other in ipairs(Players:GetPlayers()) do
 			local otherRoot = other ~= player and getRoot(other)
-			local humanoid = otherRoot and getHumanoid(other)
-			if humanoid and humanoid.Health > 0 then
+			local otherHumanoid = otherRoot and getHumanoid(other)
+			if otherHumanoid and otherHumanoid.Health > 0 then
 				local distance = (otherRoot.Position - root.Position).Magnitude
 				if distance < best then
 					target, best = other, distance
@@ -1412,6 +1556,7 @@ local function useItem(player, item)
 			notify(player, "Nobody close enough to freeze (" .. item.range .. " studs)!")
 			return false
 		end
+		iceBeam(root.Position, getRoot(target).Position)
 		freezePlayer(target, item.duration)
 		notify(player, "You froze " .. target.Name .. "!")
 		notify(target, player.Name .. " froze you!")
@@ -1419,51 +1564,20 @@ local function useItem(player, item)
 	elseif item.id == "raidkey" then
 		raidUntil[player] = os.clock() + item.duration
 		player:SetAttribute("RaidUntil", workspace:GetServerTimeNow() + item.duration)
-		notify(player, "Raid Key active for " .. item.duration .. "s: enter a base and hold E on a critter to STEAL it!")
+		notify(player, "Raid Key active for " .. item.duration .. "s: walk through a base's energy wall and hold E on a critter!")
 		return true
 	end
 	return false
 end
 
-local function hasItem(player, itemId)
-	for _, container in ipairs({ player:FindFirstChild("Backpack"), player.Character }) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				if child:IsA("Tool") and child:GetAttribute("ItemId") == itemId then
-					return true
-				end
-			end
-		end
-	end
-	return false
-end
+local MAX_ITEMS = 3
 
-local function giveItem(player, item)
-	local tool = Instance.new("Tool")
-	tool.Name = item.name
-	tool.ToolTip = item.description
-	tool.CanBeDropped = false
-	tool:SetAttribute("ItemId", item.id)
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.6, 1.4, 0.6)
-	handle.Color = item.color
-	handle.Material = Enum.Material.Neon
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Parent = tool
-	local busy = false
-	tool.Activated:Connect(function()
-		if busy then
-			return
-		end
-		busy = true
-		if useItem(player, item) then
-			tool:Destroy()
-		end
-		busy = false
-	end)
-	tool.Parent = player:FindFirstChild("Backpack")
+local function setItemCount(player, itemId, count)
+	local data = playerData[player]
+	if data then
+		data.items[itemId] = count
+		player:SetAttribute("Item_" .. itemId, count)
+	end
 end
 
 local function buyItem(player, item)
@@ -1477,8 +1591,9 @@ local function buyItem(player, item)
 		notify(player, item.name .. " is locked: get a " .. raritiesById[item.requires].name .. " critter first!")
 		return
 	end
-	if hasItem(player, item.id) then
-		notify(player, "You already have a " .. item.name .. ". Use it first!")
+	local count = data.items[item.id] or 0
+	if count >= MAX_ITEMS then
+		notify(player, "You can't carry more than " .. MAX_ITEMS .. " " .. item.name .. "s!")
 		return
 	end
 	if cash.Value < item.price then
@@ -1486,9 +1601,38 @@ local function buyItem(player, item)
 		return
 	end
 	cash.Value -= item.price
-	giveItem(player, item)
-	notify(player, "You bought a " .. item.name .. "! Equip it (bottom of the screen) and click to use.")
+	setItemCount(player, item.id, count + 1)
+	notify(player, "You bought a " .. item.name .. "! Use it with the item bar (bottom left) or keys 1-2-3.")
 end
+
+-- Le joueur clique sur un objet de sa barre (ou appuie sur 1, 2, 3)
+local useEvent = Instance.new("RemoteEvent")
+useEvent.Name = "UseItem"
+useEvent.Parent = ReplicatedStorage
+local lastUse = {}
+useEvent.OnServerEvent:Connect(function(player, itemId)
+	if typeof(itemId) ~= "string" then
+		return
+	end
+	if itemId == "reappear" then
+		if invisibleUntil[player] then
+			setInvisible(player, false)
+		end
+		return
+	end
+	local item = itemsById[itemId]
+	local data = playerData[player]
+	if not item or not data or (data.items[itemId] or 0) <= 0 then
+		return
+	end
+	if os.clock() < (lastUse[player] or 0) then
+		return
+	end
+	lastUse[player] = os.clock() + 0.5
+	if useItem(player, item) then
+		setItemCount(player, itemId, (data.items[itemId] or 1) - 1)
+	end
+end)
 
 -- La boutique, au fond de la zone des bases
 do
@@ -1520,12 +1664,18 @@ do
 			Name = "Stand", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3, 4, 4),
 			CFrame = vertical(CFrame.new(shopX, 1.5, z)), Color = Color3.fromRGB(30, 30, 35), Material = Enum.Material.Metal,
 		})
-		local orb = makePart(map, {
-			Name = "ItemOrb", Shape = Enum.PartType.Ball, Size = Vector3.one * 2, CFrame = CFrame.new(shopX, 4.5, z),
-			Color = item.color, Material = Enum.Material.Neon, CanCollide = false,
+		makePart(map, {
+			Name = "StandRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.2, 4.3, 4.3),
+			CFrame = vertical(CFrame.new(shopX, 3, z)), Color = item.color, Material = Enum.Material.Neon, CanCollide = false,
 		})
-		createBillboard(orb, item.name, "$" .. formatMoney(item.price) .. "  ·  needs " .. raritiesById[item.requires].name,
-			2.5, 10, item.color, 60)
+		-- Le modèle de l'objet flotte et tourne au-dessus du socle
+		local display = ItemModels.build(item.id, true)
+		display:ScaleTo(1.4)
+		display:PivotTo(CFrame.new(shopX, 5.5, z))
+		display.Parent = map
+		makeBobbing(display)
+		createBillboard(display.PrimaryPart, item.name, "$" .. formatMoney(item.price) .. "  ·  needs " .. raritiesById[item.requires].name,
+			3, 11, item.color, 60)
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.ActionText = "Buy $" .. formatMoney(item.price)
 		prompt.ObjectText = item.name .. " - " .. item.description
@@ -1536,6 +1686,144 @@ do
 		prompt.Triggered:Connect(function(player)
 			buyItem(player, item)
 		end)
+	end
+end
+
+
+-- ============================================================
+-- La batte : chaque joueur l'a. Frapper quelqu'un qui porte des créatures
+-- le renvoie dans sa base, et il lâche ce qu'il portait.
+-- ============================================================
+
+local function zoneAt(x)
+	for index, zone in ipairs(Config.Zones) do
+		if x >= zone.from and x < zone.to then
+			return index
+		end
+	end
+	return 1
+end
+
+-- Les créatures portées tombent par terre (les volées retournent chez leur propriétaire)
+local function dropCarried(player, position)
+	local list = carrying[player]
+	if not list or #list == 0 then
+		return 0
+	end
+	carrying[player] = {}
+	for i, carried in ipairs(list) do
+		if carried.owner then
+			giveBack(carried.owner, carried.id)
+		else
+			local x = math.max(position.X, 5)
+			local spot = Vector3.new(x + (i - 1) * 4, 0.2, math.clamp(position.Z, -HALF_WIDTH + 4, HALF_WIDTH - 4))
+			placeGroundCreature(creaturesById[carried.id], spot, zoneAt(x))
+		end
+	end
+	updateCarryVisual(player)
+	return #list
+end
+
+local function sendHome(player)
+	local data = playerData[player]
+	local root = getRoot(player)
+	if data and data.plot and root and player.Character then
+		poof(root.Position, Color3.fromRGB(255, 255, 255))
+		player.Character:PivotTo(data.plot.spawn.CFrame + Vector3.new(0, 4, 0))
+	end
+end
+
+local function swingBat(player)
+	local root = getRoot(player)
+	if not root then
+		return
+	end
+	local look = root.CFrame.LookVector
+	for _, other in ipairs(Players:GetPlayers()) do
+		local otherRoot = other ~= player and getRoot(other)
+		local humanoid = otherRoot and getHumanoid(other)
+		if humanoid and humanoid.Health > 0 then
+			local offset = otherRoot.Position - root.Position
+			if offset.Magnitude < 9 and offset.Unit:Dot(look) > 0.2 then
+				local dropped = dropCarried(other, otherRoot.Position)
+				if dropped > 0 then
+					sendHome(other)
+					notify(other, player.Name .. " bonked you! You dropped your critters.")
+					notify(player, "BONK! " .. other.Name .. " dropped " .. dropped .. " critter(s) and went home!")
+				else
+					-- Personne à voler ? Juste une petite poussée
+					otherRoot.AssemblyLinearVelocity = look * 60 + Vector3.new(0, 30, 0)
+				end
+			end
+		end
+	end
+end
+
+local function makeBat()
+	local tool = Instance.new("Tool")
+	tool.Name = "Bat"
+	tool.ToolTip = "Bonk players carrying critters: they drop them and go home!"
+	tool.CanBeDropped = false
+	tool.GripPos = Vector3.new(0, 0, -1.4)
+	tool.GripForward = Vector3.new(-1, 0, 0)
+	tool.GripRight = Vector3.new(0, 1, 0)
+	tool.GripUp = Vector3.new(0, 0, 1)
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.35, 0.35, 4)
+	handle.Color = Color3.fromRGB(190, 140, 80)
+	handle.Material = Enum.Material.Wood
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Parent = tool
+	local function batPart(name, size, offset, color, material, shape)
+		local part = Instance.new("Part")
+		part.Name = name
+		part.Size = size
+		part.Shape = shape or Enum.PartType.Block
+		part.Color = color
+		part.Material = material
+		part.CanCollide = false
+		part.Massless = true
+		part.CFrame = handle.CFrame * offset
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = handle
+		weld.Part1 = part
+		weld.Parent = part
+		part.Parent = tool
+	end
+	-- Gros bout de la batte, poignée scotchée et pommeau
+	batPart("Barrel", Vector3.new(2.4, 0.7, 0.7), CFrame.new(0, 0, 0.9) * CFrame.Angles(0, math.rad(90), 0),
+		Color3.fromRGB(200, 150, 90), Enum.Material.Wood, Enum.PartType.Cylinder)
+	batPart("Tip", Vector3.new(0.72, 0.72, 0.72), CFrame.new(0, 0, 2.1), Color3.fromRGB(200, 150, 90), Enum.Material.Wood,
+		Enum.PartType.Ball)
+	batPart("Tape", Vector3.new(1.2, 0.42, 0.42), CFrame.new(0, 0, -1.3) * CFrame.Angles(0, math.rad(90), 0),
+		Color3.fromRGB(30, 30, 35), Enum.Material.Fabric, Enum.PartType.Cylinder)
+	batPart("Knob", Vector3.new(0.2, 0.55, 0.55), CFrame.new(0, 0, -2) * CFrame.Angles(0, math.rad(90), 0),
+		Color3.fromRGB(30, 30, 35), Enum.Material.SmoothPlastic, Enum.PartType.Cylinder)
+	local ready = 0
+	tool.Activated:Connect(function()
+		local player = Players:GetPlayerFromCharacter(tool.Parent)
+		if not player or os.clock() < ready then
+			return
+		end
+		ready = os.clock() + 1
+		-- Lance l'animation de coup de l'avatar (gérée par le script Animate de Roblox)
+		local anim = Instance.new("StringValue")
+		anim.Name = "toolanim"
+		anim.Value = "Slash"
+		anim.Parent = tool
+		task.delay(0.15, function()
+			swingBat(player)
+		end)
+	end)
+	return tool
+end
+
+local function giveBat(player)
+	local backpack = player:WaitForChild("Backpack", 5)
+	if backpack and not backpack:FindFirstChild("Bat") and not (player.Character and player.Character:FindFirstChild("Bat")) then
+		makeBat().Parent = backpack
 	end
 end
 
@@ -1556,7 +1844,7 @@ if Config.SaveEnabled then
 end
 
 local function loadData(player)
-	local data = { creatures = {}, upgrades = {}, cash = Config.StartingCash, best = 0, loaded = true }
+	local data = { creatures = {}, upgrades = {}, items = {}, cash = Config.StartingCash, best = 0, loaded = true }
 	if not dataStore then
 		return data
 	end
@@ -1569,6 +1857,14 @@ local function loadData(player)
 	elseif type(saved) == "table" then
 		data.cash = tonumber(saved.cash) or data.cash
 		data.best = tonumber(saved.best) or 0
+		if type(saved.items) == "table" then
+			for _, item in ipairs(Config.Items) do
+				local count = tonumber(saved.items[item.id])
+				if count then
+					data.items[item.id] = math.clamp(math.floor(count), 0, 3)
+				end
+			end
+		end
 		if type(saved.upgrades) == "table" then
 			for _, upgrade in ipairs(Config.Upgrades) do
 				local level = tonumber(saved.upgrades[upgrade.id])
@@ -1604,6 +1900,7 @@ local function saveData(player)
 			upgrades = data.upgrades,
 			creatures = creatures,
 			best = data.best,
+			items = data.items,
 		})
 	end)
 	if not ok then
@@ -1624,12 +1921,15 @@ end
 
 local function onCharacterAdded(player, character)
 	carrying[player] = {}
+	invisibleUntil[player] = nil
+	player:SetAttribute("InvisibleUntil", 0)
 	local humanoid = character:WaitForChild("Humanoid", 10)
 	if not humanoid then
 		return
 	end
 	applySpeed(player)
 	updateCarryAttributes(player)
+	task.spawn(giveBat, player)
 	-- Toujours apparaître dans sa propre base
 	local data = playerData[player]
 	if data and data.plot then
@@ -1684,9 +1984,14 @@ local function onPlayerAdded(player)
 	data.plot = plot
 	player.RespawnLocation = plot.spawn
 	setBillboard(plot.sign, player.Name .. "'s BASE", "")
+	plot.barrier:SetAttribute("OwnerId", player.UserId)
+	plot.barrier.Transparency = 0
 	renderPedestals(plot)
 	buildPads(plot)
 	updateCarryAttributes(player)
+	for _, item in ipairs(Config.Items) do
+		player:SetAttribute("Item_" .. item.id, data.items[item.id] or 0)
+	end
 	spawnCharacter(player)
 	notify(player, "Grab critters on the path and bring them back. When the TSUNAMI comes, hide in a trench!")
 end
@@ -1700,11 +2005,14 @@ local function onPlayerRemoving(player)
 		plot.pedestalFolder:ClearAllChildren()
 		plot.padFolder:ClearAllChildren()
 		setBillboard(plot.sign, "FREE BASE", "")
+		plot.barrier:SetAttribute("OwnerId", 0)
+		plot.barrier.Transparency = 1
 	end
 	loseCarried(player) -- les créatures volées qu'il portait reviennent à leur propriétaire
 	playerData[player] = nil
 	carrying[player] = nil
 	raidUntil[player] = nil
+	invisibleUntil[player] = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

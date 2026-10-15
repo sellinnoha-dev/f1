@@ -6,7 +6,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "2 - vague qui fait peur"
+Config.Version = "3 - batte et objets"
 Config.GameName = "Tsunami Critters"
 
 Config.StartingCash = 0
@@ -110,7 +110,7 @@ Config.Items = {
 -- CRÉATURES : 3 par rareté. income = argent par seconde dans ta base.
 -- look : body = "ball", "block" ou "cylinder" ; extras = accessoires
 --   (antenna, feet, mustache, tophat, shades, propeller, headband, crown,
---    wizardhat, shell, wings, halo, horns, brows)
+--    wizardhat, shell, wings, halo, horns, brows, cape, staff, monocle, tail, flames, orbit)
 -- Musique et sons : voir le README (dossiers Music et Sounds dans SoundService)
 -- Pour utiliser ton propre modèle : range-le dans ServerStorage > Assets
 -- avec exactement le même nom que la créature (ex. "Bloop").
@@ -147,41 +147,41 @@ Config.Creatures = {
 			eyes = 2, extras = { "tophat", "mustache" } } },
 
 	{ id = "wobbleton", name = "Sir Wobbleton", rarity = "legendary", income = 220,
-		look = { body = "ball", size = 4, color = Color3.fromRGB(140, 70, 200), accent = Color3.fromRGB(255, 200, 0),
-			eyes = 2, extras = { "crown", "mustache", "feet" } } },
+		look = { body = "ball", size = 4.6, color = Color3.fromRGB(140, 70, 200), accent = Color3.fromRGB(200, 30, 50),
+			eyes = 2, extras = { "crown", "mustache", "monocle", "cape", "feet" } } },
 	{ id = "pizza", name = "Pizza Wizard", rarity = "legendary", income = 260,
-		look = { body = "block", size = 3.8, color = Color3.fromRGB(240, 150, 50), accent = Color3.fromRGB(60, 50, 180),
-			eyes = 2, extras = { "wizardhat", "brows" } } },
+		look = { body = "block", size = 4.4, color = Color3.fromRGB(240, 150, 50), accent = Color3.fromRGB(60, 50, 180),
+			eyes = 2, extras = { "wizardhat", "brows", "staff", "cape" } } },
 	{ id = "snail", name = "Turbo Snail", rarity = "legendary", income = 300,
-		look = { body = "ball", size = 3.6, color = Color3.fromRGB(120, 220, 200), accent = Color3.fromRGB(230, 60, 60),
-			eyes = 2, extras = { "shell", "antenna", "shades" } } },
+		look = { body = "ball", size = 4.4, color = Color3.fromRGB(120, 220, 200), accent = Color3.fromRGB(255, 90, 30),
+			eyes = 2, extras = { "shell", "antenna", "shades", "flames" } } },
 
 	{ id = "spaghetti", name = "Lord Spaghetti", rarity = "mythic", income = 1100,
-		look = { body = "cylinder", size = 4, color = Color3.fromRGB(250, 210, 120), accent = Color3.fromRGB(200, 30, 30),
-			eyes = 2, extras = { "crown", "wings", "mustache" } } },
+		look = { body = "cylinder", size = 5, color = Color3.fromRGB(250, 210, 120), accent = Color3.fromRGB(200, 30, 30),
+			eyes = 2, extras = { "crown", "wings", "mustache", "cape", "staff" } } },
 	{ id = "toast", name = "Cosmic Toast", rarity = "mythic", income = 1300,
-		look = { body = "block", size = 4, color = Color3.fromRGB(80, 60, 160), accent = Color3.fromRGB(0, 230, 255),
-			eyes = 3, extras = { "halo", "wings" }, material = Enum.Material.Neon } },
+		look = { body = "block", size = 5, color = Color3.fromRGB(80, 60, 160), accent = Color3.fromRGB(0, 230, 255),
+			eyes = 3, extras = { "halo", "wings", "orbit" }, material = Enum.Material.Neon } },
 	{ id = "pickle", name = "Dragon Pickle", rarity = "mythic", income = 1500,
-		look = { body = "cylinder", size = 4.2, color = Color3.fromRGB(90, 170, 50), accent = Color3.fromRGB(255, 120, 0),
-			eyes = 2, extras = { "horns", "wings", "brows" } } },
+		look = { body = "cylinder", size = 5.2, color = Color3.fromRGB(90, 170, 50), accent = Color3.fromRGB(255, 120, 0),
+			eyes = 2, extras = { "horns", "wings", "brows", "tail", "flames" } } },
 
 	{ id = "duck", name = "The Golden Duck", rarity = "secret", income = 6000,
-		look = { body = "ball", size = 4.5, color = Color3.fromRGB(255, 200, 30), accent = Color3.fromRGB(255, 120, 0),
-			eyes = 2, extras = { "crown", "halo", "feet" }, material = Enum.Material.Foil } },
+		look = { body = "ball", size = 5.5, color = Color3.fromRGB(255, 200, 30), accent = Color3.fromRGB(255, 120, 0),
+			eyes = 2, extras = { "crown", "halo", "feet", "cape", "orbit" }, material = Enum.Material.Foil } },
 	{ id = "glitch", name = "Glitch Cat", rarity = "secret", income = 8000,
-		look = { body = "block", size = 4.4, color = Color3.fromRGB(20, 20, 30), accent = Color3.fromRGB(0, 255, 120),
-			eyes = 3, extras = { "horns", "antenna", "shades" } } },
+		look = { body = "block", size = 5.5, color = Color3.fromRGB(20, 20, 30), accent = Color3.fromRGB(0, 255, 120),
+			eyes = 3, extras = { "horns", "antenna", "shades", "tail", "orbit" } } },
 	{ id = "kingbloop", name = "King Bloop", rarity = "secret", income = 10000,
-		look = { body = "ball", size = 5, color = Color3.fromRGB(0, 230, 200), accent = Color3.fromRGB(255, 215, 0),
-			eyes = 2, extras = { "crown", "wings", "halo", "feet" }, material = Enum.Material.Glass } },
+		look = { body = "ball", size = 6, color = Color3.fromRGB(0, 230, 200), accent = Color3.fromRGB(255, 215, 0),
+			eyes = 2, extras = { "crown", "wings", "halo", "feet", "cape", "staff" }, material = Enum.Material.Glass } },
 
 	{ id = "prism", name = "Prism Prince", rarity = "divine", income = 50000,
-		look = { body = "ball", size = 5, color = Color3.fromRGB(255, 255, 255), accent = Color3.fromRGB(255, 120, 255),
-			eyes = 3, extras = { "crown", "wings", "halo" }, material = Enum.Material.Glass } },
+		look = { body = "ball", size = 6.5, color = Color3.fromRGB(255, 255, 255), accent = Color3.fromRGB(255, 120, 255),
+			eyes = 3, extras = { "crown", "wings", "halo", "cape", "orbit", "staff" }, material = Enum.Material.Glass } },
 	{ id = "astral", name = "Astral Noodle", rarity = "divine", income = 75000,
-		look = { body = "cylinder", size = 5, color = Color3.fromRGB(40, 20, 90), accent = Color3.fromRGB(255, 230, 120),
-			eyes = 2, extras = { "horns", "wings", "halo", "mustache" }, material = Enum.Material.Neon } },
+		look = { body = "cylinder", size = 6.5, color = Color3.fromRGB(40, 20, 90), accent = Color3.fromRGB(255, 230, 120),
+			eyes = 2, extras = { "horns", "wings", "halo", "mustache", "tail", "flames", "orbit" }, material = Enum.Material.Neon } },
 }
 
 return Config

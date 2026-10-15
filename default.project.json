@@ -4,7 +4,8 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "Config": { "$path": "src/shared/Config.luau" },
-      "FormatMoney": { "$path": "src/shared/FormatMoney.luau" }
+      "FormatMoney": { "$path": "src/shared/FormatMoney.luau" },
+      "ItemModels": { "$path": "src/shared/ItemModels.luau" }
     },
     "ServerScriptService": {
       "WaveServer": { "$path": "src/server/WaveServer.server.luau" }

@@ -12,6 +12,8 @@ local StarterGui = game:GetService("StarterGui")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
+local ItemModels = require(ReplicatedStorage:WaitForChild("ItemModels"))
+local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 
 local gui = Instance.new("ScreenGui")
@@ -29,7 +31,7 @@ end
 local function textLabel(parent, props)
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBlack
+	label.Font = Enum.Font.FredokaOne
 	label.TextScaled = true
 	label.TextColor3 = Color3.new(1, 1, 1)
 	label.TextStrokeTransparency = 0.4
@@ -45,7 +47,7 @@ end
 -- ============================================================
 local cashFrame = Instance.new("Frame")
 cashFrame.AnchorPoint = Vector2.new(0.5, 1)
-cashFrame.Position = UDim2.new(0.5, 0, 1, -20)
+cashFrame.Position = UDim2.new(0.5, 0, 1, -84)
 cashFrame.Size = UDim2.fromOffset(240, 60)
 cashFrame.BackgroundColor3 = Color3.fromRGB(15, 30, 50)
 cashFrame.BackgroundTransparency = 0.15
@@ -61,7 +63,7 @@ local cashLabel = textLabel(cashFrame, {
 	Size = UDim2.new(1, -20, 0.7, 0), Position = UDim2.new(0, 10, 0, 4), TextColor3 = Color3.fromRGB(255, 220, 60),
 })
 local incomeLabel = textLabel(cashFrame, {
-	Size = UDim2.new(1, -20, 0.28, 0), Position = UDim2.new(0, 10, 0.7, -2), Font = Enum.Font.GothamBold,
+	Size = UDim2.new(1, -20, 0.28, 0), Position = UDim2.new(0, 10, 0.7, -2), Font = Enum.Font.FredokaOne,
 	TextColor3 = Color3.fromRGB(150, 255, 170),
 })
 
@@ -86,8 +88,8 @@ updateIncome()
 
 -- Créatures portées (au-dessus de l'argent)
 local carryLabel = textLabel(gui, {
-	AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -86), Size = UDim2.fromOffset(260, 26),
-	Font = Enum.Font.GothamBold,
+	AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -150), Size = UDim2.fromOffset(260, 26),
+	Font = Enum.Font.FredokaOne,
 })
 local function updateCarry()
 	local count = player:GetAttribute("Carrying") or 0
@@ -283,7 +285,8 @@ end
 local function placeWave(w, front, now)
 	local h = w.height
 	local t = Config.WaveThickness
-	local bob = math.sin(now * 2.5) * 1.2
+	-- Arrivée à la zone des bases : la vague s'écrase et s'enfonce dans le sol
+	local bob = math.sin(now * 2.5) * 1.2 - math.max(0, 60 - front) * 1.4
 	w.body.CFrame = CFrame.new(front + t / 2, (h + 12) / 2 - 12 + bob, 0)
 	w.shimmer.CFrame = w.body.CFrame
 	-- Crête : un quart de cercle au sommet, penché vers l'avant (vers la base)
@@ -309,9 +312,12 @@ RunService.RenderStepped:Connect(function()
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-	setMood((state == "warning" or state == "active") and "storm" or "calm")
+	-- Dans la zone des bases (avant le chemin) : pas d'effets de vague, et la musique chill
+	local inBase = not root or root.Position.X < 0
+	setMood((state == "warning" or state == "active") and not inBase and "storm" or "calm")
 	if music then
-		music.Volume = (state == "active") and 0.08 or 0.3
+		local target = inBase and 0.35 or 0
+		music.Volume += (target - music.Volume) * 0.05
 	end
 
 	if state == "active" then
@@ -325,7 +331,10 @@ RunService.RenderStepped:Connect(function()
 		placeWave(wave, front, now)
 
 		local distance = root and math.abs(root.Position.X - front) or 1000
-		waveSound.Volume = math.clamp(3 * (1 - distance / 400), 0.3, 3)
+		waveSound.Volume = inBase and 0.2 or math.clamp(3 * (1 - distance / 400), 0.3, 3)
+		if inBase then
+			distance = 1000 -- pas de tremblement ni d'éclaboussure dans la base
+		end
 		-- La caméra tremble de plus en plus fort quand la vague approche
 		if humanoid then
 			if distance < 200 then
@@ -360,7 +369,7 @@ RunService.RenderStepped:Connect(function()
 		bannerLabel.Text = "TSUNAMI IN " .. left .. "s - HIDE IN A TRENCH!"
 		local flash = math.floor(now * 4) % 2 == 0
 		banner.BackgroundColor3 = flash and Color3.fromRGB(200, 30, 40) or Color3.fromRGB(90, 10, 20)
-		if now - lastSiren > 0.5 then
+		if now - lastSiren > 0.5 and not inBase then
 			lastSiren = now
 			sirenSound:Play()
 		end
@@ -377,11 +386,47 @@ end)
 -- ============================================================
 -- Créature DIVINE : grosse annonce arc-en-ciel + aura qui change de couleur
 -- ============================================================
-local divineLabel = textLabel(gui, {
-	AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.3), Size = UDim2.fromScale(0.8, 0.09),
-	Visible = false, TextStrokeTransparency = 0,
+local divineFrame = Instance.new("Frame")
+divineFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+divineFrame.Position = UDim2.fromScale(0.5, 0.28)
+divineFrame.Size = UDim2.fromScale(0.75, 0.2)
+divineFrame.BackgroundTransparency = 1
+divineFrame.Visible = false
+divineFrame.Parent = gui
+local divineScale = Instance.new("UIScale")
+divineScale.Parent = divineFrame
+
+local divineTitle = textLabel(divineFrame, {
+	Size = UDim2.fromScale(1, 0.62), Font = Enum.Font.LuckiestGuy, Text = "DIVINE CRITTER!",
+	TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 1,
+})
+local titleStroke = Instance.new("UIStroke")
+titleStroke.Thickness = 4
+titleStroke.Color = Color3.fromRGB(40, 0, 60)
+titleStroke.Parent = divineTitle
+local rainbowGradient = Instance.new("UIGradient")
+rainbowGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 80)),
+	ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 200, 60)),
+	ColorSequenceKeypoint.new(0.4, Color3.fromRGB(120, 255, 120)),
+	ColorSequenceKeypoint.new(0.6, Color3.fromRGB(80, 220, 255)),
+	ColorSequenceKeypoint.new(0.8, Color3.fromRGB(180, 100, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 80, 200)),
+})
+rainbowGradient.Parent = divineTitle
+local divineSub = textLabel(divineFrame, {
+	Position = UDim2.fromScale(0.1, 0.66), Size = UDim2.fromScale(0.8, 0.3), Font = Enum.Font.FredokaOne,
+	TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0,
 })
 local divineUntil = 0
+
+-- Flash blanc à l'écran quand elle apparaît
+local flash = Instance.new("Frame")
+flash.Size = UDim2.fromScale(1, 1)
+flash.BackgroundColor3 = Color3.new(1, 1, 1)
+flash.BackgroundTransparency = 1
+flash.BorderSizePixel = 0
+flash.Parent = gui
 
 workspace:GetAttributeChangedSignal("DivineAt"):Connect(function()
 	local at = workspace:GetAttribute("DivineAt") or 0
@@ -389,8 +434,13 @@ workspace:GetAttributeChangedSignal("DivineAt"):Connect(function()
 		return
 	end
 	lastDivine = at
-	divineLabel.Text = "A DIVINE " .. tostring(workspace:GetAttribute("DivineName")) .. " APPEARED NEAR THE BASES!"
+	divineSub.Text = tostring(workspace:GetAttribute("DivineName")) .. " appeared in front of the bases! GO GO GO!"
 	divineUntil = os.clock() + 7
+	divineFrame.Visible = true
+	divineScale.Scale = 0.2
+	TweenService:Create(divineScale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	flash.BackgroundTransparency = 0.3
+	TweenService:Create(flash, TweenInfo.new(1), { BackgroundTransparency = 1 }):Play()
 	task.spawn(function()
 		for _ = 1, 4 do
 			divineSound:Play()
@@ -399,18 +449,49 @@ workspace:GetAttributeChangedSignal("DivineAt"):Connect(function()
 	end)
 end)
 
+-- Étiquettes des créatures divines : écriture arc-en-ciel
+local function decorateDivine(model)
+	task.wait(0.5)
+	for _, billboard in ipairs(model:GetDescendants()) do
+		if billboard:IsA("BillboardGui") and not billboard:FindFirstChild("Decorated") then
+			local marker = Instance.new("Folder")
+			marker.Name = "Decorated"
+			marker.Parent = billboard
+			billboard.Size = UDim2.new(billboard.Size.X.Scale * 1.4, 0, billboard.Size.Y.Scale * 1.4, 0)
+			local title = billboard:FindFirstChild("Title")
+			if title then
+				title.Font = Enum.Font.LuckiestGuy
+				title.TextColor3 = Color3.new(1, 1, 1)
+				rainbowGradient:Clone().Parent = title
+			end
+		end
+	end
+end
+CollectionService:GetInstanceAddedSignal("Divine"):Connect(decorateDivine)
+for _, model in ipairs(CollectionService:GetTagged("Divine")) do
+	task.spawn(decorateDivine, model)
+end
+
 RunService.Heartbeat:Connect(function()
 	local hue = (os.clock() * 0.3) % 1
 	local rainbow = Color3.fromHSV(hue, 0.7, 1)
-	divineLabel.Visible = os.clock() < divineUntil
-	if divineLabel.Visible then
-		divineLabel.TextColor3 = rainbow
-		divineLabel.Rotation = math.sin(os.clock() * 6) * 3
+	-- Le dégradé arc-en-ciel défile
+	local offset = (os.clock() * 0.5) % 2 - 1
+	for _, gradient in ipairs({ rainbowGradient }) do
+		gradient.Offset = Vector2.new(offset, 0)
+	end
+	if divineFrame.Visible then
+		divineFrame.Rotation = math.sin(os.clock() * 5) * 2.5
+		if os.clock() > divineUntil then
+			divineFrame.Visible = false
+		end
 	end
 	for _, model in ipairs(CollectionService:GetTagged("Divine")) do
-		for _, part in ipairs(model:GetChildren()) do
+		for _, part in ipairs(model:GetDescendants()) do
 			if part.Name == "Aura" and part:IsA("BasePart") then
 				part.Color = rainbow
+			elseif part:IsA("UIGradient") then
+				part.Offset = Vector2.new(offset, 0)
 			end
 		end
 		local light = model.PrimaryPart and model.PrimaryPart:FindFirstChildOfClass("PointLight")
@@ -422,8 +503,8 @@ end)
 
 -- Temps restant de la clé de raid (sous le compteur de créatures portées)
 local raidLabel = textLabel(gui, {
-	AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -114), Size = UDim2.fromOffset(260, 24),
-	Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(255, 200, 40), Visible = false,
+	AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -178), Size = UDim2.fromOffset(260, 24),
+	Font = Enum.Font.FredokaOne, TextColor3 = Color3.fromRGB(255, 200, 40), Visible = false,
 })
 RunService.Heartbeat:Connect(function()
 	local left = (player:GetAttribute("RaidUntil") or 0) - workspace:GetServerTimeNow()
@@ -486,6 +567,165 @@ for _, tag in ipairs({ "OwnerOnly", "ThiefOnly" }) do
 	end
 end
 
+
+-- ============================================================
+-- Barre d'objets (en bas à gauche) : modèle 3D, quantité, touche Z / X / C
+-- ============================================================
+local useEvent = ReplicatedStorage:WaitForChild("UseItem", 10)
+local ITEM_KEYS = { Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C }
+local ITEM_KEY_NAMES = { "Z", "X", "C" }
+
+local itemBar = Instance.new("Frame")
+itemBar.AnchorPoint = Vector2.new(0, 1)
+itemBar.Position = UDim2.new(0, 12, 1, -20)
+itemBar.Size = UDim2.fromOffset(#Config.Items * 86, 84)
+itemBar.BackgroundTransparency = 1
+itemBar.Parent = gui
+local itemLayout = Instance.new("UIListLayout")
+itemLayout.FillDirection = Enum.FillDirection.Horizontal
+itemLayout.Padding = UDim.new(0, 8)
+itemLayout.Parent = itemBar
+
+local function useItem(itemId)
+	if useEvent then
+		useEvent:FireServer(itemId)
+	end
+end
+
+for index, item in ipairs(Config.Items) do
+	local slot = Instance.new("TextButton")
+	slot.Name = item.id
+	slot.Size = UDim2.fromOffset(78, 78)
+	slot.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+	slot.BackgroundTransparency = 0.15
+	slot.Text = ""
+	slot.AutoButtonColor = true
+	slot.Visible = false
+	slot.Parent = itemBar
+	rounded(slot, 12)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = item.color
+	stroke.Thickness = 2
+	stroke.Parent = slot
+	-- Petite vue 3D de l'objet
+	local view = Instance.new("ViewportFrame")
+	view.Size = UDim2.new(1, -8, 1, -8)
+	view.Position = UDim2.fromOffset(4, 4)
+	view.BackgroundTransparency = 1
+	view.Ambient = Color3.fromRGB(200, 200, 200)
+	view.LightColor = Color3.new(1, 1, 1)
+	view.Parent = slot
+	local preview = ItemModels.build(item.id)
+	preview.Parent = view
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 40
+	local _, size = preview:GetBoundingBox()
+	local distance = size.Magnitude * 1.4
+	camera.CFrame = CFrame.lookAt(Vector3.new(distance * 0.5, distance * 0.35, -distance), Vector3.zero)
+	camera.Parent = view
+	view.CurrentCamera = camera
+	local keyLabel = textLabel(slot, {
+		Position = UDim2.fromOffset(4, 2), Size = UDim2.fromOffset(18, 18), Text = ITEM_KEY_NAMES[index],
+		TextColor3 = Color3.fromRGB(255, 220, 60),
+	})
+	keyLabel.ZIndex = 3
+	local countLabel = textLabel(slot, {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -4, 1, -2), Size = UDim2.fromOffset(30, 20), Text = "x0",
+	})
+	countLabel.ZIndex = 3
+	local function refresh()
+		local count = player:GetAttribute("Item_" .. item.id) or 0
+		countLabel.Text = "x" .. count
+		slot.Visible = count > 0
+	end
+	player:GetAttributeChangedSignal("Item_" .. item.id):Connect(refresh)
+	refresh()
+	slot.Activated:Connect(function()
+		useItem(item.id)
+	end)
+end
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+	for index, key in ipairs(ITEM_KEYS) do
+		if input.KeyCode == key and Config.Items[index] then
+			useItem(Config.Items[index].id)
+		end
+	end
+end)
+
+-- ============================================================
+-- Invisible : tu te vois en fantôme, avec le temps restant et un bouton pour réapparaître
+-- ============================================================
+local ghostFrame = Instance.new("Frame")
+ghostFrame.AnchorPoint = Vector2.new(0.5, 0)
+ghostFrame.Position = UDim2.new(0.5, 0, 0, 72)
+ghostFrame.Size = UDim2.fromOffset(300, 46)
+ghostFrame.BackgroundColor3 = Color3.fromRGB(70, 40, 130)
+ghostFrame.BackgroundTransparency = 0.15
+ghostFrame.Visible = false
+ghostFrame.Parent = gui
+rounded(ghostFrame, 10)
+local ghostLabel = textLabel(ghostFrame, { Position = UDim2.fromOffset(10, 6), Size = UDim2.new(0.55, -10, 1, -12) })
+local reappear = Instance.new("TextButton")
+reappear.AnchorPoint = Vector2.new(1, 0.5)
+reappear.Position = UDim2.new(1, -6, 0.5, 0)
+reappear.Size = UDim2.new(0.42, 0, 1, -10)
+reappear.BackgroundColor3 = Color3.fromRGB(255, 200, 40)
+reappear.Font = Enum.Font.FredokaOne
+reappear.TextScaled = true
+reappear.Text = "REAPPEAR"
+reappear.TextColor3 = Color3.fromRGB(40, 20, 0)
+reappear.Parent = ghostFrame
+rounded(reappear, 8)
+reappear.Activated:Connect(function()
+	useItem("reappear")
+end)
+
+local frozenLabel = textLabel(gui, {
+	AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(400, 60),
+	Text = "FROZEN!", TextColor3 = Color3.fromRGB(150, 230, 255), Font = Enum.Font.LuckiestGuy, Visible = false,
+})
+
+local wasInvisible = false
+RunService.Heartbeat:Connect(function()
+	local now = workspace:GetServerTimeNow()
+	local left = (player:GetAttribute("InvisibleUntil") or 0) - now
+	local invisible = left > 0
+	ghostFrame.Visible = invisible
+	if invisible then
+		ghostLabel.Text = "INVISIBLE " .. math.ceil(left) .. "s"
+	end
+	-- Chez toi seulement : ton personnage reste visible en transparence
+	local character = player.Character
+	if character and (invisible or wasInvisible) then
+		for _, part in ipairs(character:GetDescendants()) do
+			if (part:IsA("BasePart") or part:IsA("Decal")) and part.Name ~= "HumanoidRootPart"
+				and part:GetAttribute("OriginalTransparency") ~= nil then
+				part.Transparency = invisible and 0.65 or part:GetAttribute("OriginalTransparency")
+			end
+		end
+	end
+	wasInvisible = invisible
+	frozenLabel.Visible = (player:GetAttribute("FrozenUntil") or 0) > now
+end)
+
+-- ============================================================
+-- Murs d'énergie des bases : solides pour toi, sauf dans ta base ou avec une Raid Key
+-- ============================================================
+task.spawn(function()
+	while true do
+		local raiding = (player:GetAttribute("RaidUntil") or 0) > workspace:GetServerTimeNow()
+		for _, barrier in ipairs(CollectionService:GetTagged("BaseBarrier")) do
+			local owner = barrier:GetAttribute("OwnerId") or 0
+			barrier.CanCollide = owner ~= 0 and owner ~= player.UserId and not raiding
+		end
+		task.wait(0.25)
+	end
+end)
+
 -- ============================================================
 -- Panneau de test (seulement dans Roblox Studio)
 -- ============================================================
@@ -512,7 +752,7 @@ if RunService:IsStudio() then
 			local button = Instance.new("TextButton")
 			button.Size = UDim2.fromOffset(130, 28)
 			button.BackgroundColor3 = Color3.fromRGB(40, 120, 220)
-			button.Font = Enum.Font.GothamBold
+			button.Font = Enum.Font.FredokaOne
 			button.TextScaled = true
 			button.TextColor3 = Color3.new(1, 1, 1)
 			button.Text = text

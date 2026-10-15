@@ -17,10 +17,14 @@ pour gagner de l'argent… et cache-toi dans une **tranchée** quand le tsunami 
 6. Dans ta base, marche sur les boutons verts pour acheter : **SPEED** (courir plus vite),
    **CARRY** (porter plus de créatures), **PEDESTALS** (plus de places).
 7. Sur un piédestal, maintiens **E** pour vendre la créature (gain par seconde × 30).
-8. **Boutique d'objets** au fond de la zone des bases (un objet = une utilisation) :
-   - **Invisibility Cloak** (débloqué avec une créature RARE) : invisible 12 s.
+8. Tout le monde a une **batte** (barre d'outils en bas, touche 1) : frappe un joueur qui porte des créatures,
+   il les lâche par terre et retourne dans sa base. Sinon, ça le repousse juste un peu.
+9. **Boutique d'objets** au fond de la zone des bases (un objet = une utilisation, 3 max de chaque).
+   Ils apparaissent dans la **barre d'objets en bas à gauche** : clique dessus ou appuie sur **Z / X / C**.
+   - **Invisibility Cloak** (débloqué avec une créature RARE) : invisible 12 s (tu te vois en fantôme,
+     bouton **REAPPEAR** pour revenir avant la fin).
    - **Freeze Ray** (EPIC) : gèle le joueur le plus proche pendant 4 s.
-   - **Raid Key** (LEGENDARY) : 20 s pour entrer dans la base d'un autre (protégée sinon) et voler une créature
+   - **Raid Key** (LEGENDARY) : 20 s pour traverser le mur d'énergie d'une autre base et voler une créature
      (maintiens E dessus). Si le voleur meurt, la créature revient à son propriétaire.
 
 ## Ajouter de la musique (et des sons)
@@ -30,7 +34,8 @@ Le code ne peut pas choisir une musique à ta place (les sons Roblox doivent êt
 2. Ouvre la **Boîte à outils**, catégorie **Audio**, cherche « chill » ou « lofi ».
    Prends de préférence un son publié par **Roblox** (ceux-là sont utilisables dans tous les jeux).
 3. Clique dessus pour l'insérer, puis glisse le son (il arrive dans Workspace) dans le dossier **Music**.
-   Tu peux en mettre plusieurs : ils passent au hasard.
+   Tu peux en mettre plusieurs : ils passent au hasard. La musique ne joue que dans la zone des bases
+   (elle se coupe doucement quand tu pars sur le chemin).
 4. Optionnel : un dossier **`Sounds`** dans SoundService avec des sons nommés **`Siren`**, **`Wave`** ou **`Divine`**
    remplace les sons par défaut de l'alerte, de la vague et de la créature divine.
 
@@ -44,7 +49,7 @@ Le code ne peut pas choisir une musique à ta place (les sons Roblox doivent êt
 local H = game:GetService("HttpService") H.HttpEnabled = true loadstring(H:GetAsync("https://raw.githubusercontent.com/sellinnoha-dev/f1/main/tools/StudioUpdate.luau?v=" .. os.time(), true))()
 ```
 
-4. La Sortie affiche « Mise à jour terminée : 4/4 ». Fais **Fichier → Enregistrer sous** (ex. `TsunamiCritters.rbxlx`), puis **F5**.
+4. La Sortie affiche « Mise à jour terminée : 5/5 ». Fais **Fichier → Enregistrer sous** (ex. `TsunamiCritters.rbxlx`), puis **F5**.
 
 Pour mettre à jour plus tard : même ligne (flèche du haut dans la barre de commande), jeu arrêté,
 et **ferme l'onglet Config** s'il est ouvert.
@@ -71,6 +76,7 @@ gains des créatures, prix des améliorations.
 |---|---|
 | `src/shared/Config.luau` | Tous les réglages |
 | `src/server/WaveServer.server.luau` | Le moteur : carte, vague, créatures, bases, sauvegarde |
+| `src/shared/ItemModels.luau` | Les modèles 3D des objets (boutique et barre d'objets) |
 | `src/client/WaveClient.client.luau` | L'écran du joueur : argent, alerte, vague animée, panneau de test |
 | `tools/StudioUpdate.luau` | Installe / met à jour les scripts dans Studio |
 | `build/TsunamiCritters.rbxlx` | Le jeu construit avec Rojo |

@@ -20,6 +20,7 @@ end
 local FILES = {
 	{ "shared/Config.luau", game:GetService("ReplicatedStorage"), "Config", "ModuleScript" },
 	{ "shared/FormatMoney.luau", game:GetService("ReplicatedStorage"), "FormatMoney", "ModuleScript" },
+	{ "shared/ItemModels.luau", game:GetService("ReplicatedStorage"), "ItemModels", "ModuleScript" },
 	{ "server/WaveServer.server.luau", ServerScriptService, "WaveServer", "Script" },
 	{ "client/WaveClient.client.luau", game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"), "WaveClient", "LocalScript" },
 }

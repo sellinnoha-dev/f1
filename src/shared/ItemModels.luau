@@ -78,6 +78,28 @@ function builders.raidkey(model)
 	return bow
 end
 
+-- Bulle de protection : sphère bleue transparente avec un anneau lumineux
+function builders.shield(model)
+	local orb = piece(model, { Name = "Bubble", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.8, CFrame = CFrame.new(),
+		Color = Color3.fromRGB(110, 210, 255), Material = Enum.Material.Glass, Transparency = 0.35 })
+	piece(model, { Name = "Core", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.7, CFrame = CFrame.new(),
+		Color = Color3.fromRGB(200, 240, 255), Material = Enum.Material.Neon })
+	piece(model, { Name = "Ring", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.15, 2.3, 2.3),
+		CFrame = CFrame.Angles(0, 0, math.rad(70)), Color = Color3.fromRGB(90, 200, 255), Material = Enum.Material.Neon })
+	return orb
+end
+
+-- Orbe de téléportation violette avec deux anneaux
+function builders.teleport(model)
+	local orb = piece(model, { Name = "Orb", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.3, CFrame = CFrame.new(),
+		Color = Color3.fromRGB(190, 110, 255), Material = Enum.Material.Neon })
+	for i, tilt in ipairs({ 25, -40 }) do
+		piece(model, { Name = "Ring", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.12, 1.8 + i * 0.3, 1.8 + i * 0.3),
+			CFrame = CFrame.Angles(math.rad(tilt), 0, math.rad(90)), Color = Color3.fromRGB(255, 220, 255), Material = Enum.Material.Neon })
+	end
+	return orb
+end
+
 -- Crée le modèle d'un objet, centré sur (0, 0, 0). weld = true : pièces soudées
 -- à la pièce principale (seule ancrée), pour pouvoir la faire tourner.
 function ItemModels.build(itemId, weld)

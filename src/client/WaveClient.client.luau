@@ -154,31 +154,37 @@ local divineSound = getSound("Divine", "rbxasset://sounds/electronicpingshort.wa
 -- Musique d'ambiance : chaque son du dossier Music, dans un ordre au hasard
 local music = nil
 task.spawn(function()
-	-- Musiques : dans le dossier SoundService > Music, ou posées directement dans SoundService
+	-- Musiques : tous les sons rangés dans SoundService (dossier Music ou directement dedans)
 	task.wait(2)
 	local tracks = {}
-	local folder = SoundService:FindFirstChild("Music")
-	for _, container in ipairs({ folder, SoundService }) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				if child:IsA("Sound") and not ({ Siren = true, Wave = true, Divine = true })[child.Name] then
-					table.insert(tracks, child)
-				end
-			end
+	for _, child in ipairs(SoundService:GetDescendants()) do
+		if child:IsA("Sound") and not ({ Siren = true, Wave = true, Divine = true })[child.Name] then
+			table.insert(tracks, child)
 		end
 	end
+	print("[Tsunami] Musiques trouvées dans SoundService :", #tracks)
 	if #tracks == 0 then
 		return
 	end
 	while true do
 		local track = tracks[math.random(#tracks)]
 		music = track
-		track.Looped = false
+		track.Looped = #tracks == 1
+		track.Volume = 0
 		track:Play()
-		if track.TimeLength == 0 then
-			track.Loaded:Wait()
+		if #tracks == 1 then
+			return -- une seule musique : elle tourne en boucle
 		end
-		track.Ended:Wait()
+		local started = os.clock()
+		while not track.IsLoaded and os.clock() - started < 10 do
+			task.wait(0.5)
+		end
+		if track.TimeLength > 0 then
+			track.Ended:Wait()
+		else
+			warn("[Tsunami] La musique " .. track.Name .. " ne se charge pas (son privé ?)")
+			task.wait(30)
+		end
 		task.wait(1)
 	end
 end)
@@ -637,8 +643,8 @@ local closeButton = makeButton(panel, "X", Color3.fromRGB(220, 60, 60), {
 	AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 10), Size = UDim2.fromOffset(40, 40),
 })
 local content = Instance.new("ScrollingFrame")
-content.Position = UDim2.fromOffset(14, 60)
-content.Size = UDim2.new(1, -28, 1, -74)
+content.Position = UDim2.fromOffset(14, 104)
+content.Size = UDim2.new(1, -28, 1, -118)
 content.BackgroundTransparency = 1
 content.BorderSizePixel = 0
 content.ScrollBarThickness = 8
@@ -652,6 +658,19 @@ grid.SortOrder = Enum.SortOrder.LayoutOrder
 grid.Parent = content
 
 local currentTab = nil
+local shopTab = "ITEMS"
+
+-- Onglets du SHOP (sous le titre)
+local subTabs = Instance.new("Frame")
+subTabs.Position = UDim2.fromOffset(14, 58)
+subTabs.Size = UDim2.new(1, -28, 0, 38)
+subTabs.BackgroundTransparency = 1
+subTabs.Parent = panel
+local subLayout = Instance.new("UIListLayout")
+subLayout.FillDirection = Enum.FillDirection.Horizontal
+subLayout.Padding = UDim.new(0, 8)
+subLayout.Parent = subTabs
+local subButtons = {}
 
 local function card(color, order)
 	local frame = Instance.new("Frame")
@@ -666,8 +685,11 @@ local function card(color, order)
 	return frame
 end
 
-local function viewport(parent, model, height)
+local function viewport(parent, model, height, silhouette)
 	local view = Instance.new("ViewportFrame")
+	if silhouette then
+		view.ImageColor3 = Color3.new(0, 0, 0)
+	end
 	view.Position = UDim2.fromOffset(10, 8)
 	view.Size = UDim2.new(1, -20, 0, height)
 	view.BackgroundTransparency = 1
@@ -687,7 +709,40 @@ end
 
 local tabs = {}
 
-function tabs.SHOP()
+local critterModels = ReplicatedStorage:WaitForChild("CritterModels", 10)
+
+local function critterPreview(id)
+	local source = critterModels and critterModels:FindFirstChild(id)
+	return source and source:Clone() or nil
+end
+
+-- Petite caisse en bois (pour les cartes du SHOP)
+local function crateModel(color)
+	local model = Instance.new("Model")
+	local function part(size, cframe, partColor, material)
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.Size = size
+		p.CFrame = cframe
+		p.Color = partColor
+		p.Material = material or Enum.Material.Wood
+		p.Parent = model
+		return p
+	end
+	part(Vector3.new(3, 2.4, 3), CFrame.new(0, 0, 0), Color3.fromRGB(150, 100, 55))
+	part(Vector3.new(3.2, 0.5, 3.2), CFrame.new(0, 1.35, 0), color, Enum.Material.SmoothPlastic)
+	for _, x in ipairs({ -1.4, 1.4 }) do
+		part(Vector3.new(0.3, 2.5, 3.1), CFrame.new(x, 0, 0), Color3.fromRGB(110, 70, 35))
+	end
+	local lock = part(Vector3.new(0.7, 0.7, 0.2), CFrame.new(0, 0.6, -1.6), Color3.fromRGB(255, 210, 60), Enum.Material.Neon)
+	model.PrimaryPart = lock
+	return model
+end
+
+local SHOP_TABS = { "ITEMS", "CRATES", "BOOSTS", "ROBUX" }
+local shopBuilders = {}
+
+function shopBuilders.ITEMS()
 	local best = player:GetAttribute("Best") or 0
 	for index, item in ipairs(Config.Items) do
 		local frame = card(item.color, index)
@@ -711,9 +766,60 @@ function tabs.SHOP()
 			shopEvent:FireServer("item", item.id)
 		end)
 	end
-	-- Game Pass (Robux)
+end
+
+function shopBuilders.CRATES()
+	for index, crate in ipairs(Config.Crates or {}) do
+		local frame = card(crate.color, index)
+		viewport(frame, crateModel(crate.color), 80)
+		textLabel(frame, { Position = UDim2.fromOffset(8, 90), Size = UDim2.new(1, -16, 0, 26), Text = crate.name,
+			TextColor3 = crate.color })
+		-- Chances de chaque rareté
+		local lines = {}
+		for _, rarity in ipairs(Config.Rarities) do
+			local chance = crate.chances[rarity.id]
+			if chance then
+				table.insert(lines, rarity.name .. " " .. chance .. "%")
+			end
+		end
+		textLabel(frame, { Position = UDim2.fromOffset(8, 118), Size = UDim2.new(1, -16, 0, 56), Text = table.concat(lines, "\n"),
+			TextColor3 = Color3.fromRGB(200, 210, 230), Font = Enum.Font.FredokaOne, TextWrapped = true })
+		local buy = makeButton(frame, "OPEN $" .. formatMoney(crate.price),
+			cash.Value >= crate.price and Color3.fromRGB(60, 200, 90) or Color3.fromRGB(100, 100, 110),
+			{ Position = UDim2.new(0, 10, 1, -40), Size = UDim2.new(1, -20, 0, 32) })
+		buy.Activated:Connect(function()
+			shopEvent:FireServer("crate", crate.id)
+		end)
+	end
+end
+
+function shopBuilders.BOOSTS()
+	for index, boost in ipairs(Config.Boosts or {}) do
+		local frame = card(boost.color, index)
+		textLabel(frame, { Position = UDim2.fromOffset(8, 14), Size = UDim2.new(1, -16, 0, 56),
+			Text = boost.id == "speed" and "»»" or "x2", TextColor3 = boost.color, Font = Enum.Font.LuckiestGuy })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 76), Size = UDim2.new(1, -16, 0, 28), Text = boost.name })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 106), Size = UDim2.new(1, -16, 0, 44), Text = boost.description,
+			TextColor3 = Color3.fromRGB(200, 210, 230), Font = Enum.Font.FredokaOne, TextWrapped = true })
+		local left = (player:GetAttribute("Boost_" .. boost.id) or 0) - workspace:GetServerTimeNow()
+		if left > 0 then
+			textLabel(frame, { Position = UDim2.fromOffset(8, 152), Size = UDim2.new(1, -16, 0, 18),
+				Text = "Active: " .. math.ceil(left / 60) .. " min left", TextColor3 = Color3.fromRGB(150, 255, 170),
+				Font = Enum.Font.FredokaOne })
+		end
+		local price = math.max(boost.price, math.floor((player:GetAttribute("Income") or 0) * boost.incomeMinutes * 60))
+		local buy = makeButton(frame, "$" .. formatMoney(price),
+			cash.Value >= price and Color3.fromRGB(60, 200, 90) or Color3.fromRGB(100, 100, 110),
+			{ Position = UDim2.new(0, 10, 1, -40), Size = UDim2.new(1, -20, 0, 32) })
+		buy.Activated:Connect(function()
+			shopEvent:FireServer("boost", boost.id)
+		end)
+	end
+end
+
+function shopBuilders.ROBUX()
 	for index, pass in ipairs(Config.GamePasses or {}) do
-		local frame = card(Color3.fromRGB(255, 200, 40), 100 + index)
+		local frame = card(Color3.fromRGB(255, 200, 40), index)
 		textLabel(frame, { Position = UDim2.fromOffset(8, 14), Size = UDim2.new(1, -16, 0, 60), Text = "R$",
 			TextColor3 = Color3.fromRGB(255, 220, 60), Font = Enum.Font.LuckiestGuy })
 		textLabel(frame, { Position = UDim2.fromOffset(8, 84), Size = UDim2.new(1, -16, 0, 30), Text = pass.name })
@@ -733,6 +839,24 @@ function tabs.SHOP()
 			end
 		end)
 	end
+end
+
+local refreshPanel -- défini plus bas
+
+for _, name in ipairs(SHOP_TABS) do
+	local button = makeButton(subTabs, name, Color3.fromRGB(50, 70, 110), { Size = UDim2.fromOffset(130, 36) })
+	subButtons[name] = button
+	button.Activated:Connect(function()
+		shopTab = name
+		refreshPanel()
+	end)
+end
+
+function tabs.SHOP()
+	for name, button in pairs(subButtons) do
+		button.BackgroundColor3 = name == shopTab and Color3.fromRGB(60, 200, 90) or Color3.fromRGB(50, 70, 110)
+	end
+	shopBuilders[shopTab]()
 end
 
 function tabs.UPGRADES()
@@ -770,13 +894,11 @@ function tabs.INDEX()
 			count += 1
 		end
 		local frame = card(rarity.color, (rarityIndex[def.rarity] or 1) * 100 + index)
-		local swatch = Instance.new("Frame")
-		swatch.Position = UDim2.fromOffset(40, 16)
-		swatch.Size = UDim2.new(1, -80, 0, 90)
-		swatch.BackgroundColor3 = known and def.look.color or Color3.fromRGB(20, 20, 25)
-		swatch.Parent = frame
-		rounded(swatch, 45)
-		textLabel(swatch, { Size = UDim2.fromScale(1, 1), Text = known and "" or "?", TextColor3 = Color3.fromRGB(120, 120, 130) })
+		-- La créature en 3D (en silhouette noire tant qu'elle n'est pas trouvée)
+		local preview = critterPreview(def.id)
+		if preview then
+			viewport(frame, preview, 100, not known)
+		end
 		textLabel(frame, { Position = UDim2.fromOffset(8, 116), Size = UDim2.new(1, -16, 0, 28), Text = known and def.name or "???" })
 		textLabel(frame, { Position = UDim2.fromOffset(8, 148), Size = UDim2.new(1, -16, 0, 22), Text = rarity.name,
 			TextColor3 = rarity.color, Font = Enum.Font.FredokaOne })
@@ -787,7 +909,8 @@ function tabs.INDEX()
 	panelTitle.Text = "INDEX  " .. count .. " / " .. #Config.Creatures
 end
 
-local function refreshPanel()
+function refreshPanel()
+	subTabs.Visible = currentTab == "SHOP"
 	for _, child in ipairs(content:GetChildren()) do
 		if not child:IsA("UIGridLayout") then
 			child:Destroy()
@@ -855,6 +978,177 @@ for _, entry in ipairs({
 		openTab(entry[1])
 	end)
 end
+
+
+-- ============================================================
+-- Ouverture de caisse : roulette de créatures qui ralentit, puis la grande révélation
+-- ============================================================
+local crateEvent = ReplicatedStorage:WaitForChild("CrateOpened", 10)
+local rollFrame = Instance.new("Frame")
+rollFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+rollFrame.Position = UDim2.fromScale(0.5, 0.5)
+rollFrame.Size = UDim2.fromOffset(640, 300)
+rollFrame.BackgroundColor3 = Color3.fromRGB(20, 25, 45)
+rollFrame.Visible = false
+rollFrame.ZIndex = 20
+rollFrame.Parent = gui
+rounded(rollFrame, 16)
+local rollStroke = Instance.new("UIStroke")
+rollStroke.Thickness = 4
+rollStroke.Parent = rollFrame
+local rollTitle = textLabel(rollFrame, { Position = UDim2.fromOffset(10, 8), Size = UDim2.new(1, -20, 0, 40),
+	Font = Enum.Font.LuckiestGuy, ZIndex = 21 })
+local strip = Instance.new("Frame")
+strip.Position = UDim2.fromOffset(10, 60)
+strip.Size = UDim2.new(1, -20, 0, 170)
+strip.BackgroundColor3 = Color3.fromRGB(12, 15, 28)
+strip.ClipsDescendants = true
+strip.ZIndex = 21
+strip.Parent = rollFrame
+rounded(strip, 10)
+local marker = Instance.new("Frame")
+marker.AnchorPoint = Vector2.new(0.5, 0)
+marker.Position = UDim2.new(0.5, 0, 0, 52)
+marker.Size = UDim2.fromOffset(6, 186)
+marker.BackgroundColor3 = Color3.fromRGB(255, 220, 60)
+marker.ZIndex = 25
+marker.Parent = rollFrame
+local rollResult = textLabel(rollFrame, { Position = UDim2.fromOffset(10, 240), Size = UDim2.new(1, -20, 0, 48),
+	Font = Enum.Font.LuckiestGuy, ZIndex = 21 })
+
+local function rollCard(parent, def, x)
+	local rarity = raritiesById[def.rarity]
+	local frame = Instance.new("Frame")
+	frame.Position = UDim2.fromOffset(x, 10)
+	frame.Size = UDim2.fromOffset(120, 150)
+	frame.BackgroundColor3 = Color3.fromRGB(40, 55, 90)
+	frame.ZIndex = 22
+	frame.Parent = parent
+	rounded(frame, 10)
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 3
+	stroke.Color = rarity.color
+	stroke.Parent = frame
+	local preview = critterPreview(def.id)
+	if preview then
+		local view = viewport(frame, preview, 100)
+		view.ZIndex = 23
+	end
+	local label = textLabel(frame, { Position = UDim2.fromOffset(4, 112), Size = UDim2.new(1, -8, 0, 32),
+		Text = rarity.name, TextColor3 = rarity.color, Font = Enum.Font.FredokaOne })
+	label.ZIndex = 23
+end
+
+local creaturesById = {}
+for _, def in ipairs(Config.Creatures) do
+	creaturesById[def.id] = def
+end
+
+if crateEvent then
+	crateEvent.OnClientEvent:Connect(function(crateId, defId)
+		local crate, result = nil, creaturesById[defId]
+		for _, candidate in ipairs(Config.Crates or {}) do
+			if candidate.id == crateId then
+				crate = candidate
+			end
+		end
+		if not crate or not result then
+			return
+		end
+		panel.Visible = false
+		currentTab = nil
+		for _, child in ipairs(strip:GetChildren()) do
+			if child:IsA("Frame") then
+				child:Destroy()
+			end
+		end
+		-- Bande de 40 cartes tirées au hasard parmi les raretés de la caisse ; la 35e est le résultat
+		local pool = {}
+		for _, def in ipairs(Config.Creatures) do
+			if crate.chances[def.rarity] then
+				table.insert(pool, def)
+			end
+		end
+		local reel = Instance.new("Frame")
+		reel.BackgroundTransparency = 1
+		reel.Size = UDim2.fromOffset(40 * 130, 170)
+		reel.ZIndex = 21
+		reel.Parent = strip
+		for i = 1, 40 do
+			local def = (i == 35) and result or pool[math.random(#pool)]
+			rollCard(reel, def, (i - 1) * 130)
+		end
+		rollTitle.Text = crate.name:upper()
+		rollTitle.TextColor3 = crate.color
+		rollStroke.Color = crate.color
+		rollResult.Text = ""
+		rollFrame.Visible = true
+		local stripWidth = strip.AbsoluteSize.X
+		local finalX = -((35 - 1) * 130 + 60 - stripWidth / 2) + math.random(-40, 40)
+		reel.Position = UDim2.fromOffset(0, 0)
+		local spin = TweenService:Create(reel, TweenInfo.new(4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{ Position = UDim2.fromOffset(finalX, 0) })
+		spin:Play()
+		spin.Completed:Wait()
+		local rarity = raritiesById[result.rarity]
+		rollResult.Text = "YOU GOT " .. result.name:upper() .. "!"
+		rollResult.TextColor3 = rarity.color
+		if (rarityIndex[result.rarity] or 1) >= 5 then
+			flash.BackgroundTransparency = 0.3
+			TweenService:Create(flash, TweenInfo.new(1), { BackgroundTransparency = 1 }):Play()
+			divineSound:Play()
+		end
+		task.wait(2.5)
+		rollFrame.Visible = false
+	end)
+end
+
+-- ============================================================
+-- Boosts actifs : petites cases avec minuteur, en bas de l'écran
+-- ============================================================
+local boostBar = Instance.new("Frame")
+boostBar.AnchorPoint = Vector2.new(0.5, 1)
+boostBar.Position = UDim2.new(0.5, 0, 1, -212)
+boostBar.Size = UDim2.fromOffset(300, 56)
+boostBar.BackgroundTransparency = 1
+boostBar.Parent = gui
+local boostLayout = Instance.new("UIListLayout")
+boostLayout.FillDirection = Enum.FillDirection.Horizontal
+boostLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+boostLayout.Padding = UDim.new(0, 8)
+boostLayout.Parent = boostBar
+local boostSlots = {}
+for _, boost in ipairs(Config.Boosts or {}) do
+	local slot = Instance.new("Frame")
+	slot.Size = UDim2.fromOffset(64, 56)
+	slot.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+	slot.BackgroundTransparency = 0.15
+	slot.Visible = false
+	slot.Parent = boostBar
+	rounded(slot, 10)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = boost.color
+	stroke.Thickness = 2
+	stroke.Parent = slot
+	textLabel(slot, { Position = UDim2.fromOffset(2, 2), Size = UDim2.new(1, -4, 0, 30),
+		Text = boost.id == "speed" and "»»" or "x2", TextColor3 = boost.color, Font = Enum.Font.LuckiestGuy })
+	local timer = textLabel(slot, { Position = UDim2.fromOffset(2, 32), Size = UDim2.new(1, -4, 0, 20),
+		Font = Enum.Font.FredokaOne })
+	boostSlots[boost.id] = { frame = slot, timer = timer }
+end
+task.spawn(function()
+	while true do
+		local now = workspace:GetServerTimeNow()
+		for id, slot in pairs(boostSlots) do
+			local left = (player:GetAttribute("Boost_" .. id) or 0) - now
+			slot.frame.Visible = left > 0
+			if left > 0 then
+				slot.timer.Text = string.format("%d:%02d", math.floor(left / 60), math.floor(left % 60))
+			end
+		end
+		task.wait(0.5)
+	end
+end)
 
 -- ============================================================
 -- Invisible : tu te vois en fantôme, avec le temps restant et un bouton pour réapparaître

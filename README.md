@@ -21,7 +21,9 @@ pour gagner de l'argent… et cache-toi dans une **tranchée** quand le tsunami 
    il les lâche par terre et retourne dans sa base. Sinon, ça le repousse juste un peu.
 9. **Boutique d'objets** au fond de la zone des bases, ou bouton **SHOP** à gauche de l'écran
    (un objet = une utilisation, 3 max de chaque). Ils vont dans ta barre d'outils, à côté de la batte.
-10. Menu à gauche : **SHOP** (objets + Game Pass en Robux), **UPGRADES** (acheter les améliorations de n'importe où),
+10. Menu à gauche : **SHOP** avec 4 onglets — **ITEMS** (objets), **CRATES** (caisses : une créature au hasard,
+    avec une roulette), **BOOSTS** (2x Cash, 2x Luck, Speed, avec minuteur en bas de l'écran), **ROBUX** (Game Pass) —
+    **UPGRADES** (acheter les améliorations de n'importe où),
     **INDEX** (toutes les créatures, celles pas encore trouvées sont cachées).
 
 ## Bots

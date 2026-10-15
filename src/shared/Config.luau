@@ -6,7 +6,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "4 - bots et boutique"
+Config.Version = "5 - vrai shop"
 Config.GameName = "Tsunami Critters"
 
 Config.StartingCash = 0
@@ -106,6 +106,32 @@ Config.GamePasses = {
 }
 
 -- ============================================================
+-- CAISSES (achetées avec l'argent du jeu) : une créature au hasard sur un piédestal libre
+-- chances = probabilité de chaque rareté (2x Luck double les raretés hautes)
+-- ============================================================
+Config.Crates = {
+	{ id = "basic", name = "Basic Crate", price = 5000, color = Color3.fromRGB(160, 110, 60),
+		chances = { common = 60, rare = 32, epic = 8 } },
+	{ id = "rare", name = "Rare Crate", price = 150000, color = Color3.fromRGB(70, 150, 255),
+		chances = { rare = 50, epic = 36, legendary = 13, mythic = 1 } },
+	{ id = "legendary", name = "Legendary Crate", price = 3000000, color = Color3.fromRGB(255, 190, 0),
+		chances = { epic = 40, legendary = 45, mythic = 13, secret = 2 } },
+	{ id = "mythic", name = "Mythic Crate", price = 60000000, color = Color3.fromRGB(255, 50, 80),
+		chances = { legendary = 50, mythic = 40, secret = 9.5, divine = 0.5 } },
+}
+
+-- BOOSTS (argent du jeu) : temporaires, le temps s'additionne si on en rachète.
+-- Prix = le plus grand entre "price" et X minutes de tes revenus (incomeMinutes)
+Config.Boosts = {
+	{ id = "cash2x", name = "2x Cash", duration = 600, price = 25000, incomeMinutes = 2,
+		color = Color3.fromRGB(255, 200, 40), description = "Double your income for 10 min" },
+	{ id = "luck2x", name = "2x Luck", duration = 600, price = 40000, incomeMinutes = 3,
+		color = Color3.fromRGB(90, 230, 120), description = "Better crates + double DIVINE chance, 10 min" },
+	{ id = "speed", name = "Speed Potion", duration = 300, price = 10000, incomeMinutes = 1,
+		color = Color3.fromRGB(80, 200, 255), description = "+8 walk speed for 5 min" },
+}
+
+-- ============================================================
 -- BOTS : de faux joueurs pour tester le jeu à plusieurs
 -- ============================================================
 Config.BotsEnabled = true
@@ -117,6 +143,10 @@ Config.BotCount = 3
 -- requires = rareté qu'il faut avoir déjà obtenue pour le débloquer
 -- ============================================================
 Config.Items = {
+	{ id = "teleport", name = "Home Teleport", requires = "common", price = 1500,
+		color = Color3.fromRGB(200, 120, 255), description = "Teleport home with the critters you carry" },
+	{ id = "shield", name = "Bubble Shield", requires = "common", price = 4000, duration = 20,
+		color = Color3.fromRGB(90, 200, 255), description = "The wave can't hurt you for 20s" },
 	{ id = "cloak", name = "Invisibility Cloak", requires = "rare", price = 5000, duration = 12,
 		color = Color3.fromRGB(170, 200, 255), description = "Invisible for 12s" },
 	{ id = "freeze", name = "Freeze Ray", requires = "epic", price = 25000, duration = 4, range = 45,

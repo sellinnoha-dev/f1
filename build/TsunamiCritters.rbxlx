@@ -20,7 +20,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "4 - bots et boutique"
+Config.Version = "5 - vrai shop"
 Config.GameName = "Tsunami Critters"
 
 Config.StartingCash = 0
@@ -120,6 +120,32 @@ Config.GamePasses = {
 }
 
 -- ============================================================
+-- CAISSES (achetées avec l'argent du jeu) : une créature au hasard sur un piédestal libre
+-- chances = probabilité de chaque rareté (2x Luck double les raretés hautes)
+-- ============================================================
+Config.Crates = {
+	{ id = "basic", name = "Basic Crate", price = 5000, color = Color3.fromRGB(160, 110, 60),
+		chances = { common = 60, rare = 32, epic = 8 } },
+	{ id = "rare", name = "Rare Crate", price = 150000, color = Color3.fromRGB(70, 150, 255),
+		chances = { rare = 50, epic = 36, legendary = 13, mythic = 1 } },
+	{ id = "legendary", name = "Legendary Crate", price = 3000000, color = Color3.fromRGB(255, 190, 0),
+		chances = { epic = 40, legendary = 45, mythic = 13, secret = 2 } },
+	{ id = "mythic", name = "Mythic Crate", price = 60000000, color = Color3.fromRGB(255, 50, 80),
+		chances = { legendary = 50, mythic = 40, secret = 9.5, divine = 0.5 } },
+}
+
+-- BOOSTS (argent du jeu) : temporaires, le temps s'additionne si on en rachète.
+-- Prix = le plus grand entre "price" et X minutes de tes revenus (incomeMinutes)
+Config.Boosts = {
+	{ id = "cash2x", name = "2x Cash", duration = 600, price = 25000, incomeMinutes = 2,
+		color = Color3.fromRGB(255, 200, 40), description = "Double your income for 10 min" },
+	{ id = "luck2x", name = "2x Luck", duration = 600, price = 40000, incomeMinutes = 3,
+		color = Color3.fromRGB(90, 230, 120), description = "Better crates + double DIVINE chance, 10 min" },
+	{ id = "speed", name = "Speed Potion", duration = 300, price = 10000, incomeMinutes = 1,
+		color = Color3.fromRGB(80, 200, 255), description = "+8 walk speed for 5 min" },
+}
+
+-- ============================================================
 -- BOTS : de faux joueurs pour tester le jeu à plusieurs
 -- ============================================================
 Config.BotsEnabled = true
@@ -131,6 +157,10 @@ Config.BotCount = 3
 -- requires = rareté qu'il faut avoir déjà obtenue pour le débloquer
 -- ============================================================
 Config.Items = {
+	{ id = "teleport", name = "Home Teleport", requires = "common", price = 1500,
+		color = Color3.fromRGB(200, 120, 255), description = "Teleport home with the critters you carry" },
+	{ id = "shield", name = "Bubble Shield", requires = "common", price = 4000, duration = 20,
+		color = Color3.fromRGB(90, 200, 255), description = "The wave can't hurt you for 20s" },
 	{ id = "cloak", name = "Invisibility Cloak", requires = "rare", price = 5000, duration = 12,
 		color = Color3.fromRGB(170, 200, 255), description = "Invisible for 12s" },
 	{ id = "freeze", name = "Freeze Ray", requires = "epic", price = 25000, duration = 4, range = 45,
@@ -324,6 +354,28 @@ function builders.raidkey(model)
 			Color = GOLD, Material = Enum.Material.Metal, Reflectance = 0.35 })
 	end
 	return bow
+end
+
+-- Bulle de protection : sphère bleue transparente avec un anneau lumineux
+function builders.shield(model)
+	local orb = piece(model, { Name = "Bubble", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.8, CFrame = CFrame.new(),
+		Color = Color3.fromRGB(110, 210, 255), Material = Enum.Material.Glass, Transparency = 0.35 })
+	piece(model, { Name = "Core", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.7, CFrame = CFrame.new(),
+		Color = Color3.fromRGB(200, 240, 255), Material = Enum.Material.Neon })
+	piece(model, { Name = "Ring", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.15, 2.3, 2.3),
+		CFrame = CFrame.Angles(0, 0, math.rad(70)), Color = Color3.fromRGB(90, 200, 255), Material = Enum.Material.Neon })
+	return orb
+end
+
+-- Orbe de téléportation violette avec deux anneaux
+function builders.teleport(model)
+	local orb = piece(model, { Name = "Orb", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.3, CFrame = CFrame.new(),
+		Color = Color3.fromRGB(190, 110, 255), Material = Enum.Material.Neon })
+	for i, tilt in ipairs({ 25, -40 }) do
+		piece(model, { Name = "Ring", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.12, 1.8 + i * 0.3, 1.8 + i * 0.3),
+			CFrame = CFrame.Angles(math.rad(tilt), 0, math.rad(90)), Color = Color3.fromRGB(255, 220, 255), Material = Enum.Material.Neon })
+	end
+	return orb
 end
 
 -- Crée le modèle d'un objet, centré sur (0, 0, 0). weld = true : pièces soudées
@@ -934,6 +986,30 @@ local function makeCreatureModel(def)
 	return model
 end
 
+-- Copies des créatures pour l'écran du joueur (INDEX, ouverture de caisses)
+task.defer(function()
+	local folder = Instance.new("Folder")
+	folder.Name = "CritterModels"
+	for _, def in ipairs(Config.Creatures) do
+		local ok, model = pcall(function()
+			return buildCustomCreature(def) or buildCreature(def)
+		end)
+		if ok and model then
+			model.Name = def.id
+			for _, descendant in ipairs(model:GetDescendants()) do
+				if descendant:IsA("BasePart") then
+					descendant.Anchored = true
+				elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Sparkles") or descendant:IsA("Light") then
+					descendant:Destroy()
+				end
+			end
+			CollectionService:RemoveTag(model, "Divine")
+			model.Parent = folder
+		end
+	end
+	folder.Parent = ReplicatedStorage
+end)
+
 local function creatureLabel(model, def, offset)
 	local rarity = raritiesById[def.rarity]
 	return createBillboard(model.PrimaryPart, def.name, rarity.name .. "  ·  $" .. formatMoney(def.income) .. "/s",
@@ -1363,12 +1439,17 @@ end
 -- Améliorations (on marche sur le bouton pour acheter)
 -- ============================================================
 
+-- Boost acheté encore actif ? (fin stockée en attribut, en temps serveur)
+local function boostActive(owner, id)
+	return (owner:GetAttribute("Boost_" .. id) or 0) > workspace:GetServerTimeNow()
+end
+
 local function applySpeed(player)
 	local humanoid = getHumanoid(player)
 	local data = playerData[player]
 	if humanoid and data then
 		humanoid.WalkSpeed = 16 + upgradeLevel(data, "speed") * upgradesById.speed.perLevel
-			+ (hasPass(player, "speed") and 8 or 0)
+			+ (hasPass(player, "speed") and 8 or 0) + (boostActive(player, "speed") and 8 or 0)
 	end
 end
 
@@ -1832,8 +1913,9 @@ RunService.Heartbeat:Connect(function()
 			local humanoid = getHumanoid(player)
 			if root and humanoid and humanoid.Health > 0 then
 				local position = root.Position
+				local shielded = (player:GetAttribute("ShieldUntil") or 0) > now
 				if position.X > 0 and position.X >= front - 2 and position.X <= back
-					and position.Y > Config.SafeDepth then
+					and position.Y > Config.SafeDepth and not shielded then
 					loseCarried(player)
 					humanoid.Health = 0
 					notify(player, "The " .. tostring(workspace:GetAttribute("WaveName")) .. " got you!")
@@ -1853,7 +1935,13 @@ RunService.Heartbeat:Connect(function()
 			-- Après la vague : toutes nouvelles créatures, et peut-être une DIVINE
 			task.spawn(function()
 				refillAll()
-				if math.random() < Config.DivineChance then
+				local chance = Config.DivineChance
+				for _, agent in ipairs(Players:GetPlayers()) do
+					if boostActive(agent, "luck2x") then
+						chance = Config.DivineChance * 2
+					end
+				end
+				if math.random() < chance then
 					spawnDivine()
 				end
 			end)
@@ -2059,6 +2147,30 @@ local function useItem(player, item)
 		notify(player, "You froze " .. target.Name .. "!")
 		notify(target, player.Name .. " froze you!")
 		return true
+	elseif item.id == "shield" then
+		player:SetAttribute("ShieldUntil", workspace:GetServerTimeNow() + item.duration)
+		local bubble = makePart(character, {
+			Name = "ShieldBubble", Shape = Enum.PartType.Ball, Size = Vector3.one * 8, CFrame = root.CFrame,
+			Color = Color3.fromRGB(90, 200, 255), Material = Enum.Material.ForceField, Transparency = 0,
+			Anchored = false, CanCollide = false, CanQuery = false, CanTouch = false, Massless = true,
+		})
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = root
+		weld.Part1 = bubble
+		weld.Parent = bubble
+		task.delay(item.duration, function()
+			bubble:Destroy()
+		end)
+		notify(player, "Bubble Shield on for " .. item.duration .. "s: the wave can't hurt you!")
+		return true
+	elseif item.id == "teleport" then
+		poof(root.Position, Color3.fromRGB(200, 120, 255))
+		local data = playerData[player]
+		if data and data.plot then
+			character:PivotTo(data.plot.spawn.CFrame + Vector3.new(0, 4, 0))
+		end
+		notify(player, "Teleported home!")
+		return true
 	elseif item.id == "raidkey" then
 		raidUntil[player] = os.clock() + item.duration
 		player:SetAttribute("RaidUntil", workspace:GetServerTimeNow() + item.duration)
@@ -2075,6 +2187,8 @@ local HOLD = {
 	cloak = CFrame.new(0, -1.45, 0),
 	freeze = CFrame.Angles(0, -math.pi / 2, 0) * CFrame.new(0.6, 0.75, 0),
 	raidkey = CFrame.Angles(0, -math.pi / 2, 0) * CFrame.new(1, 0, 0),
+	shield = CFrame.new(0, 0, 0.9),
+	teleport = CFrame.new(0, 0, 0.8),
 }
 
 local syncItemTools -- défini juste en dessous
@@ -2140,26 +2254,32 @@ function syncItemTools(player)
 	for _, item in ipairs(Config.Items) do
 		local count = data.items[item.id] or 0
 		player:SetAttribute("Item_" .. item.id, count)
-		local tool
-		for _, container in ipairs({ backpack, player.Character }) do
+		-- Une case par objet : 3 objets achetés = 3 cases dans la barre
+		local tools = {}
+		for _, container in ipairs({ player.Character, backpack }) do
 			if container then
 				for _, child in ipairs(container:GetChildren()) do
 					if child:IsA("Tool") and child:GetAttribute("ItemId") == item.id then
-						tool = child
+						table.insert(tools, child)
 					end
 				end
 			end
 		end
-		if count > 0 then
-			if not tool and backpack then
-				tool = makeItemTool(player, item)
-				tool.Parent = backpack
+		while #tools > count do
+			local extra = table.remove(tools)
+			if extra then
+				extra:Destroy()
 			end
-			if tool then
-				tool.Name = item.name .. " x" .. count
+		end
+		while #tools < count and backpack do
+			local ok, tool = pcall(makeItemTool, player, item)
+			if not ok then
+				warn("[Tsunami] Objet impossible à créer :", item.id, tool)
+				break
 			end
-		elseif tool then
-			tool:Destroy()
+			tool.Name = item.name
+			tool.Parent = backpack
+			table.insert(tools, tool)
 		end
 	end
 end
@@ -2777,6 +2897,125 @@ for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(onPlayerAdded, player)
 end
 
+
+-- ============================================================
+-- Caisses (crates) et boosts, achetés avec l'argent du jeu dans le SHOP
+-- ============================================================
+
+local cratesById, boostsById = {}, {}
+for _, crate in ipairs(Config.Crates or {}) do
+	cratesById[crate.id] = crate
+end
+for _, boost in ipairs(Config.Boosts or {}) do
+	boostsById[boost.id] = boost
+end
+
+local crateEvent = Instance.new("RemoteEvent")
+crateEvent.Name = "CrateOpened"
+crateEvent.Parent = ReplicatedStorage
+
+-- Tire une rareté selon des chances ; avec 2x Luck, les raretés hautes comptent double
+local function rollRarity(chances, lucky)
+	local lowest = math.huge
+	for id in pairs(chances) do
+		lowest = math.min(lowest, rarityIndex[id] or math.huge)
+	end
+	local weights, total = {}, 0
+	for _, rarity in ipairs(Config.Rarities) do
+		local weight = chances[rarity.id]
+		if weight then
+			if lucky and rarityIndex[rarity.id] > lowest then
+				weight *= 2
+			end
+			weights[rarity.id] = weight
+			total += weight
+		end
+	end
+	local pick = math.random() * total
+	for _, rarity in ipairs(Config.Rarities) do
+		local weight = weights[rarity.id]
+		if weight then
+			pick -= weight
+			if pick <= 0 then
+				return rarity.id
+			end
+		end
+	end
+	return Config.Rarities[1].id
+end
+
+local function openCrate(player, crate)
+	local data = playerData[player]
+	local cash = getCash(player)
+	if not data or not cash or not data.plot then
+		return
+	end
+	local free
+	for index = 1, pedestalCount(data) do
+		if not data.creatures[index] then
+			free = index
+			break
+		end
+	end
+	if not free then
+		notify(player, "No free pedestal! Sell a critter first (hold E on it).")
+		return
+	end
+	if cash.Value < crate.price then
+		notify(player, "Not enough cash! " .. crate.name .. " costs $" .. formatMoney(crate.price))
+		return
+	end
+	cash.Value -= crate.price
+	local rarityId = rollRarity(crate.chances, boostActive(player, "luck2x"))
+	local def
+	for i = rarityIndex[rarityId], 1, -1 do
+		local list = creaturesByRarity[Config.Rarities[i].id]
+		if list and #list > 0 then
+			def = list[math.random(#list)]
+			break
+		end
+	end
+	data.creatures[free] = def.id
+	data.discovered[def.id] = true
+	data.best = math.max(data.best or 0, rarityIndex[def.rarity])
+	syncStats(player)
+	crateEvent:FireClient(player, crate.id, def.id)
+	-- La créature apparaît sur son piédestal après l'animation d'ouverture
+	task.delay(4.5, function()
+		if data.plot and data.creatures[free] == def.id then
+			renderPedestal(data.plot, free)
+		end
+	end)
+	if rarityIndex[def.rarity] >= 5 then
+		task.delay(4.5, function()
+			notifyAll(player.Name .. " got a " .. raritiesById[def.rarity].name .. " " .. def.name .. " from a " .. crate.name .. "!")
+		end)
+	end
+end
+
+-- Prix d'un boost : un prix de base, qui grandit avec les revenus du joueur
+local function boostPrice(player, boost)
+	return math.max(boost.price, math.floor((player:GetAttribute("Income") or 0) * boost.incomeMinutes * 60))
+end
+
+local function buyBoost(player, boost)
+	local cash = getCash(player)
+	if not cash then
+		return
+	end
+	local price = boostPrice(player, boost)
+	if cash.Value < price then
+		notify(player, "Not enough cash! " .. boost.name .. " costs $" .. formatMoney(price))
+		return
+	end
+	cash.Value -= price
+	local now = workspace:GetServerTimeNow()
+	local current = math.max(now, player:GetAttribute("Boost_" .. boost.id) or 0)
+	player:SetAttribute("Boost_" .. boost.id, current + boost.duration)
+	applySpeed(player)
+	notify(player, boost.name .. " active for " .. math.floor(boost.duration / 60) .. " more minutes!")
+end
+
 -- Achats depuis le menu SHOP / UPGRADES (n'importe où sur la carte)
 local shopEvent = Instance.new("RemoteEvent")
 shopEvent.Name = "ShopAction"
@@ -2789,6 +3028,10 @@ shopEvent.OnServerEvent:Connect(function(player, kind, id)
 		buyItem(player, itemsById[id])
 	elseif kind == "upgrade" and upgradesById[id] then
 		buyUpgrade(player, upgradesById[id])
+	elseif kind == "crate" and cratesById[id] then
+		openCrate(player, cratesById[id])
+	elseif kind == "boost" and boostsById[id] then
+		buyBoost(player, boostsById[id])
 	end
 end)
 
@@ -2816,6 +3059,10 @@ task.spawn(function()
 				if hasPass(player, "cash2x") then
 					income *= 2
 				end
+				if boostActive(player, "cash2x") then
+					income *= 2
+				end
+				applySpeed(player) -- la potion de vitesse s'arrête toute seule
 				if income > 0 then
 					cash.Value += income
 				end
@@ -3041,6 +3288,76 @@ local function nextWaypoint(position, target, plot)
 	return target
 end
 
+local PathfindingService = game:GetService("PathfindingService")
+
+-- Fait avancer un bot vers sa cible. Dans la zone des bases (murs, autres bases),
+-- il calcule un vrai chemin ; s'il reste bloqué, il saute puis recalcule.
+local function moveBot(state, humanoid, root, target, plot, mode)
+	local position = root.Position
+	local now = os.clock()
+	-- Bloqué ? (il n'a presque pas bougé depuis 2,5 s)
+	if not state.lastPosition or (flat(position) - flat(state.lastPosition)).Magnitude > 2 then
+		state.lastPosition = position
+		state.lastMoved = now
+	end
+	local stuckFor = now - (state.lastMoved or now)
+	if mode ~= "hide" and stuckFor > 2.5 then
+		humanoid.Jump = true
+		state.path = nil
+	end
+	if mode ~= "hide" and stuckFor > 9 then
+		-- Vraiment coincé : il retourne dans sa base (comme un joueur qui se réinitialise)
+		root.Parent:PivotTo(plot.spawn.CFrame + Vector3.new(0, 4, 0))
+		state.lastMoved = now
+		state.path = nil
+		return
+	end
+	if position.Y < -1.5 and mode ~= "hide" then
+		humanoid.Jump = true -- sortir d'une tranchée
+	end
+
+	local inBaseArea = position.X < -2 or target.X < -2
+	if not inBaseArea then
+		state.path = nil
+		humanoid:MoveTo(target)
+		return
+	end
+	-- Pour aller sur le chemin, on vise d'abord l'entrée du chemin
+	local goal = target.X > 2 and Vector3.new(6, 0, math.clamp(target.Z, -18, 18)) or target
+	if position.X > 0 and goal.X > 0 then
+		humanoid:MoveTo(target)
+		return
+	end
+	if not state.path or not state.pathGoal or (state.pathGoal - goal).Magnitude > 6 or now - (state.pathTime or 0) > 4 then
+		state.pathGoal = goal
+		state.pathTime = now
+		state.path = nil
+		local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, WaypointSpacing = 6 })
+		local ok = pcall(function()
+			path:ComputeAsync(position, goal)
+		end)
+		if ok and path.Status == Enum.PathStatus.Success then
+			state.path = path:GetWaypoints()
+			state.waypoint = 2
+		end
+	end
+	if state.path then
+		local waypoint = state.path[state.waypoint]
+		while waypoint and (flat(waypoint.Position) - flat(position)).Magnitude < 3 do
+			state.waypoint += 1
+			waypoint = state.path[state.waypoint]
+		end
+		if waypoint then
+			humanoid:MoveTo(waypoint.Position)
+			if waypoint.Action == Enum.PathWaypointAction.Jump then
+				humanoid.Jump = true
+			end
+			return
+		end
+	end
+	humanoid:MoveTo(nextWaypoint(position, goal, plot))
+end
+
 local function botBrain(bot)
 	local state = botStates[bot]
 	local personality = state.personality
@@ -3174,13 +3491,9 @@ local function botBrain(bot)
 			end
 		end
 
-		-- Déplacement (en passant par l'entrée de la base) ; saute pour sortir d'une tranchée
+		-- Déplacement : chemin calculé dans la zone des bases, tout droit sur le chemin
 		if target then
-			local waypoint = nextWaypoint(position, target, plot)
-			humanoid:MoveTo(waypoint)
-			if position.Y < -1.5 and mode ~= "hide" then
-				humanoid.Jump = true
-			end
+			moveBot(state, humanoid, root, target, plot, mode)
 		end
 	end
 end
@@ -3462,31 +3775,37 @@ local divineSound = getSound("Divine", "rbxasset://sounds/electronicpingshort.wa
 -- Musique d'ambiance : chaque son du dossier Music, dans un ordre au hasard
 local music = nil
 task.spawn(function()
-	-- Musiques : dans le dossier SoundService > Music, ou posées directement dans SoundService
+	-- Musiques : tous les sons rangés dans SoundService (dossier Music ou directement dedans)
 	task.wait(2)
 	local tracks = {}
-	local folder = SoundService:FindFirstChild("Music")
-	for _, container in ipairs({ folder, SoundService }) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				if child:IsA("Sound") and not ({ Siren = true, Wave = true, Divine = true })[child.Name] then
-					table.insert(tracks, child)
-				end
-			end
+	for _, child in ipairs(SoundService:GetDescendants()) do
+		if child:IsA("Sound") and not ({ Siren = true, Wave = true, Divine = true })[child.Name] then
+			table.insert(tracks, child)
 		end
 	end
+	print("[Tsunami] Musiques trouvées dans SoundService :", #tracks)
 	if #tracks == 0 then
 		return
 	end
 	while true do
 		local track = tracks[math.random(#tracks)]
 		music = track
-		track.Looped = false
+		track.Looped = #tracks == 1
+		track.Volume = 0
 		track:Play()
-		if track.TimeLength == 0 then
-			track.Loaded:Wait()
+		if #tracks == 1 then
+			return -- une seule musique : elle tourne en boucle
 		end
-		track.Ended:Wait()
+		local started = os.clock()
+		while not track.IsLoaded and os.clock() - started < 10 do
+			task.wait(0.5)
+		end
+		if track.TimeLength > 0 then
+			track.Ended:Wait()
+		else
+			warn("[Tsunami] La musique " .. track.Name .. " ne se charge pas (son privé ?)")
+			task.wait(30)
+		end
 		task.wait(1)
 	end
 end)
@@ -3945,8 +4264,8 @@ local closeButton = makeButton(panel, "X", Color3.fromRGB(220, 60, 60), {
 	AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 10), Size = UDim2.fromOffset(40, 40),
 })
 local content = Instance.new("ScrollingFrame")
-content.Position = UDim2.fromOffset(14, 60)
-content.Size = UDim2.new(1, -28, 1, -74)
+content.Position = UDim2.fromOffset(14, 104)
+content.Size = UDim2.new(1, -28, 1, -118)
 content.BackgroundTransparency = 1
 content.BorderSizePixel = 0
 content.ScrollBarThickness = 8
@@ -3960,6 +4279,19 @@ grid.SortOrder = Enum.SortOrder.LayoutOrder
 grid.Parent = content
 
 local currentTab = nil
+local shopTab = "ITEMS"
+
+-- Onglets du SHOP (sous le titre)
+local subTabs = Instance.new("Frame")
+subTabs.Position = UDim2.fromOffset(14, 58)
+subTabs.Size = UDim2.new(1, -28, 0, 38)
+subTabs.BackgroundTransparency = 1
+subTabs.Parent = panel
+local subLayout = Instance.new("UIListLayout")
+subLayout.FillDirection = Enum.FillDirection.Horizontal
+subLayout.Padding = UDim.new(0, 8)
+subLayout.Parent = subTabs
+local subButtons = {}
 
 local function card(color, order)
 	local frame = Instance.new("Frame")
@@ -3974,8 +4306,11 @@ local function card(color, order)
 	return frame
 end
 
-local function viewport(parent, model, height)
+local function viewport(parent, model, height, silhouette)
 	local view = Instance.new("ViewportFrame")
+	if silhouette then
+		view.ImageColor3 = Color3.new(0, 0, 0)
+	end
 	view.Position = UDim2.fromOffset(10, 8)
 	view.Size = UDim2.new(1, -20, 0, height)
 	view.BackgroundTransparency = 1
@@ -3995,7 +4330,40 @@ end
 
 local tabs = {}
 
-function tabs.SHOP()
+local critterModels = ReplicatedStorage:WaitForChild("CritterModels", 10)
+
+local function critterPreview(id)
+	local source = critterModels and critterModels:FindFirstChild(id)
+	return source and source:Clone() or nil
+end
+
+-- Petite caisse en bois (pour les cartes du SHOP)
+local function crateModel(color)
+	local model = Instance.new("Model")
+	local function part(size, cframe, partColor, material)
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.Size = size
+		p.CFrame = cframe
+		p.Color = partColor
+		p.Material = material or Enum.Material.Wood
+		p.Parent = model
+		return p
+	end
+	part(Vector3.new(3, 2.4, 3), CFrame.new(0, 0, 0), Color3.fromRGB(150, 100, 55))
+	part(Vector3.new(3.2, 0.5, 3.2), CFrame.new(0, 1.35, 0), color, Enum.Material.SmoothPlastic)
+	for _, x in ipairs({ -1.4, 1.4 }) do
+		part(Vector3.new(0.3, 2.5, 3.1), CFrame.new(x, 0, 0), Color3.fromRGB(110, 70, 35))
+	end
+	local lock = part(Vector3.new(0.7, 0.7, 0.2), CFrame.new(0, 0.6, -1.6), Color3.fromRGB(255, 210, 60), Enum.Material.Neon)
+	model.PrimaryPart = lock
+	return model
+end
+
+local SHOP_TABS = { "ITEMS", "CRATES", "BOOSTS", "ROBUX" }
+local shopBuilders = {}
+
+function shopBuilders.ITEMS()
 	local best = player:GetAttribute("Best") or 0
 	for index, item in ipairs(Config.Items) do
 		local frame = card(item.color, index)
@@ -4019,9 +4387,60 @@ function tabs.SHOP()
 			shopEvent:FireServer("item", item.id)
 		end)
 	end
-	-- Game Pass (Robux)
+end
+
+function shopBuilders.CRATES()
+	for index, crate in ipairs(Config.Crates or {}) do
+		local frame = card(crate.color, index)
+		viewport(frame, crateModel(crate.color), 80)
+		textLabel(frame, { Position = UDim2.fromOffset(8, 90), Size = UDim2.new(1, -16, 0, 26), Text = crate.name,
+			TextColor3 = crate.color })
+		-- Chances de chaque rareté
+		local lines = {}
+		for _, rarity in ipairs(Config.Rarities) do
+			local chance = crate.chances[rarity.id]
+			if chance then
+				table.insert(lines, rarity.name .. " " .. chance .. "%")
+			end
+		end
+		textLabel(frame, { Position = UDim2.fromOffset(8, 118), Size = UDim2.new(1, -16, 0, 56), Text = table.concat(lines, "\n"),
+			TextColor3 = Color3.fromRGB(200, 210, 230), Font = Enum.Font.FredokaOne, TextWrapped = true })
+		local buy = makeButton(frame, "OPEN $" .. formatMoney(crate.price),
+			cash.Value >= crate.price and Color3.fromRGB(60, 200, 90) or Color3.fromRGB(100, 100, 110),
+			{ Position = UDim2.new(0, 10, 1, -40), Size = UDim2.new(1, -20, 0, 32) })
+		buy.Activated:Connect(function()
+			shopEvent:FireServer("crate", crate.id)
+		end)
+	end
+end
+
+function shopBuilders.BOOSTS()
+	for index, boost in ipairs(Config.Boosts or {}) do
+		local frame = card(boost.color, index)
+		textLabel(frame, { Position = UDim2.fromOffset(8, 14), Size = UDim2.new(1, -16, 0, 56),
+			Text = boost.id == "speed" and "»»" or "x2", TextColor3 = boost.color, Font = Enum.Font.LuckiestGuy })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 76), Size = UDim2.new(1, -16, 0, 28), Text = boost.name })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 106), Size = UDim2.new(1, -16, 0, 44), Text = boost.description,
+			TextColor3 = Color3.fromRGB(200, 210, 230), Font = Enum.Font.FredokaOne, TextWrapped = true })
+		local left = (player:GetAttribute("Boost_" .. boost.id) or 0) - workspace:GetServerTimeNow()
+		if left > 0 then
+			textLabel(frame, { Position = UDim2.fromOffset(8, 152), Size = UDim2.new(1, -16, 0, 18),
+				Text = "Active: " .. math.ceil(left / 60) .. " min left", TextColor3 = Color3.fromRGB(150, 255, 170),
+				Font = Enum.Font.FredokaOne })
+		end
+		local price = math.max(boost.price, math.floor((player:GetAttribute("Income") or 0) * boost.incomeMinutes * 60))
+		local buy = makeButton(frame, "$" .. formatMoney(price),
+			cash.Value >= price and Color3.fromRGB(60, 200, 90) or Color3.fromRGB(100, 100, 110),
+			{ Position = UDim2.new(0, 10, 1, -40), Size = UDim2.new(1, -20, 0, 32) })
+		buy.Activated:Connect(function()
+			shopEvent:FireServer("boost", boost.id)
+		end)
+	end
+end
+
+function shopBuilders.ROBUX()
 	for index, pass in ipairs(Config.GamePasses or {}) do
-		local frame = card(Color3.fromRGB(255, 200, 40), 100 + index)
+		local frame = card(Color3.fromRGB(255, 200, 40), index)
 		textLabel(frame, { Position = UDim2.fromOffset(8, 14), Size = UDim2.new(1, -16, 0, 60), Text = "R$",
 			TextColor3 = Color3.fromRGB(255, 220, 60), Font = Enum.Font.LuckiestGuy })
 		textLabel(frame, { Position = UDim2.fromOffset(8, 84), Size = UDim2.new(1, -16, 0, 30), Text = pass.name })
@@ -4041,6 +4460,24 @@ function tabs.SHOP()
 			end
 		end)
 	end
+end
+
+local refreshPanel -- défini plus bas
+
+for _, name in ipairs(SHOP_TABS) do
+	local button = makeButton(subTabs, name, Color3.fromRGB(50, 70, 110), { Size = UDim2.fromOffset(130, 36) })
+	subButtons[name] = button
+	button.Activated:Connect(function()
+		shopTab = name
+		refreshPanel()
+	end)
+end
+
+function tabs.SHOP()
+	for name, button in pairs(subButtons) do
+		button.BackgroundColor3 = name == shopTab and Color3.fromRGB(60, 200, 90) or Color3.fromRGB(50, 70, 110)
+	end
+	shopBuilders[shopTab]()
 end
 
 function tabs.UPGRADES()
@@ -4078,13 +4515,11 @@ function tabs.INDEX()
 			count += 1
 		end
 		local frame = card(rarity.color, (rarityIndex[def.rarity] or 1) * 100 + index)
-		local swatch = Instance.new("Frame")
-		swatch.Position = UDim2.fromOffset(40, 16)
-		swatch.Size = UDim2.new(1, -80, 0, 90)
-		swatch.BackgroundColor3 = known and def.look.color or Color3.fromRGB(20, 20, 25)
-		swatch.Parent = frame
-		rounded(swatch, 45)
-		textLabel(swatch, { Size = UDim2.fromScale(1, 1), Text = known and "" or "?", TextColor3 = Color3.fromRGB(120, 120, 130) })
+		-- La créature en 3D (en silhouette noire tant qu'elle n'est pas trouvée)
+		local preview = critterPreview(def.id)
+		if preview then
+			viewport(frame, preview, 100, not known)
+		end
 		textLabel(frame, { Position = UDim2.fromOffset(8, 116), Size = UDim2.new(1, -16, 0, 28), Text = known and def.name or "???" })
 		textLabel(frame, { Position = UDim2.fromOffset(8, 148), Size = UDim2.new(1, -16, 0, 22), Text = rarity.name,
 			TextColor3 = rarity.color, Font = Enum.Font.FredokaOne })
@@ -4095,7 +4530,8 @@ function tabs.INDEX()
 	panelTitle.Text = "INDEX  " .. count .. " / " .. #Config.Creatures
 end
 
-local function refreshPanel()
+function refreshPanel()
+	subTabs.Visible = currentTab == "SHOP"
 	for _, child in ipairs(content:GetChildren()) do
 		if not child:IsA("UIGridLayout") then
 			child:Destroy()
@@ -4163,6 +4599,177 @@ for _, entry in ipairs({
 		openTab(entry[1])
 	end)
 end
+
+
+-- ============================================================
+-- Ouverture de caisse : roulette de créatures qui ralentit, puis la grande révélation
+-- ============================================================
+local crateEvent = ReplicatedStorage:WaitForChild("CrateOpened", 10)
+local rollFrame = Instance.new("Frame")
+rollFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+rollFrame.Position = UDim2.fromScale(0.5, 0.5)
+rollFrame.Size = UDim2.fromOffset(640, 300)
+rollFrame.BackgroundColor3 = Color3.fromRGB(20, 25, 45)
+rollFrame.Visible = false
+rollFrame.ZIndex = 20
+rollFrame.Parent = gui
+rounded(rollFrame, 16)
+local rollStroke = Instance.new("UIStroke")
+rollStroke.Thickness = 4
+rollStroke.Parent = rollFrame
+local rollTitle = textLabel(rollFrame, { Position = UDim2.fromOffset(10, 8), Size = UDim2.new(1, -20, 0, 40),
+	Font = Enum.Font.LuckiestGuy, ZIndex = 21 })
+local strip = Instance.new("Frame")
+strip.Position = UDim2.fromOffset(10, 60)
+strip.Size = UDim2.new(1, -20, 0, 170)
+strip.BackgroundColor3 = Color3.fromRGB(12, 15, 28)
+strip.ClipsDescendants = true
+strip.ZIndex = 21
+strip.Parent = rollFrame
+rounded(strip, 10)
+local marker = Instance.new("Frame")
+marker.AnchorPoint = Vector2.new(0.5, 0)
+marker.Position = UDim2.new(0.5, 0, 0, 52)
+marker.Size = UDim2.fromOffset(6, 186)
+marker.BackgroundColor3 = Color3.fromRGB(255, 220, 60)
+marker.ZIndex = 25
+marker.Parent = rollFrame
+local rollResult = textLabel(rollFrame, { Position = UDim2.fromOffset(10, 240), Size = UDim2.new(1, -20, 0, 48),
+	Font = Enum.Font.LuckiestGuy, ZIndex = 21 })
+
+local function rollCard(parent, def, x)
+	local rarity = raritiesById[def.rarity]
+	local frame = Instance.new("Frame")
+	frame.Position = UDim2.fromOffset(x, 10)
+	frame.Size = UDim2.fromOffset(120, 150)
+	frame.BackgroundColor3 = Color3.fromRGB(40, 55, 90)
+	frame.ZIndex = 22
+	frame.Parent = parent
+	rounded(frame, 10)
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 3
+	stroke.Color = rarity.color
+	stroke.Parent = frame
+	local preview = critterPreview(def.id)
+	if preview then
+		local view = viewport(frame, preview, 100)
+		view.ZIndex = 23
+	end
+	local label = textLabel(frame, { Position = UDim2.fromOffset(4, 112), Size = UDim2.new(1, -8, 0, 32),
+		Text = rarity.name, TextColor3 = rarity.color, Font = Enum.Font.FredokaOne })
+	label.ZIndex = 23
+end
+
+local creaturesById = {}
+for _, def in ipairs(Config.Creatures) do
+	creaturesById[def.id] = def
+end
+
+if crateEvent then
+	crateEvent.OnClientEvent:Connect(function(crateId, defId)
+		local crate, result = nil, creaturesById[defId]
+		for _, candidate in ipairs(Config.Crates or {}) do
+			if candidate.id == crateId then
+				crate = candidate
+			end
+		end
+		if not crate or not result then
+			return
+		end
+		panel.Visible = false
+		currentTab = nil
+		for _, child in ipairs(strip:GetChildren()) do
+			if child:IsA("Frame") then
+				child:Destroy()
+			end
+		end
+		-- Bande de 40 cartes tirées au hasard parmi les raretés de la caisse ; la 35e est le résultat
+		local pool = {}
+		for _, def in ipairs(Config.Creatures) do
+			if crate.chances[def.rarity] then
+				table.insert(pool, def)
+			end
+		end
+		local reel = Instance.new("Frame")
+		reel.BackgroundTransparency = 1
+		reel.Size = UDim2.fromOffset(40 * 130, 170)
+		reel.ZIndex = 21
+		reel.Parent = strip
+		for i = 1, 40 do
+			local def = (i == 35) and result or pool[math.random(#pool)]
+			rollCard(reel, def, (i - 1) * 130)
+		end
+		rollTitle.Text = crate.name:upper()
+		rollTitle.TextColor3 = crate.color
+		rollStroke.Color = crate.color
+		rollResult.Text = ""
+		rollFrame.Visible = true
+		local stripWidth = strip.AbsoluteSize.X
+		local finalX = -((35 - 1) * 130 + 60 - stripWidth / 2) + math.random(-40, 40)
+		reel.Position = UDim2.fromOffset(0, 0)
+		local spin = TweenService:Create(reel, TweenInfo.new(4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{ Position = UDim2.fromOffset(finalX, 0) })
+		spin:Play()
+		spin.Completed:Wait()
+		local rarity = raritiesById[result.rarity]
+		rollResult.Text = "YOU GOT " .. result.name:upper() .. "!"
+		rollResult.TextColor3 = rarity.color
+		if (rarityIndex[result.rarity] or 1) >= 5 then
+			flash.BackgroundTransparency = 0.3
+			TweenService:Create(flash, TweenInfo.new(1), { BackgroundTransparency = 1 }):Play()
+			divineSound:Play()
+		end
+		task.wait(2.5)
+		rollFrame.Visible = false
+	end)
+end
+
+-- ============================================================
+-- Boosts actifs : petites cases avec minuteur, en bas de l'écran
+-- ============================================================
+local boostBar = Instance.new("Frame")
+boostBar.AnchorPoint = Vector2.new(0.5, 1)
+boostBar.Position = UDim2.new(0.5, 0, 1, -212)
+boostBar.Size = UDim2.fromOffset(300, 56)
+boostBar.BackgroundTransparency = 1
+boostBar.Parent = gui
+local boostLayout = Instance.new("UIListLayout")
+boostLayout.FillDirection = Enum.FillDirection.Horizontal
+boostLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+boostLayout.Padding = UDim.new(0, 8)
+boostLayout.Parent = boostBar
+local boostSlots = {}
+for _, boost in ipairs(Config.Boosts or {}) do
+	local slot = Instance.new("Frame")
+	slot.Size = UDim2.fromOffset(64, 56)
+	slot.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
+	slot.BackgroundTransparency = 0.15
+	slot.Visible = false
+	slot.Parent = boostBar
+	rounded(slot, 10)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = boost.color
+	stroke.Thickness = 2
+	stroke.Parent = slot
+	textLabel(slot, { Position = UDim2.fromOffset(2, 2), Size = UDim2.new(1, -4, 0, 30),
+		Text = boost.id == "speed" and "»»" or "x2", TextColor3 = boost.color, Font = Enum.Font.LuckiestGuy })
+	local timer = textLabel(slot, { Position = UDim2.fromOffset(2, 32), Size = UDim2.new(1, -4, 0, 20),
+		Font = Enum.Font.FredokaOne })
+	boostSlots[boost.id] = { frame = slot, timer = timer }
+end
+task.spawn(function()
+	while true do
+		local now = workspace:GetServerTimeNow()
+		for id, slot in pairs(boostSlots) do
+			local left = (player:GetAttribute("Boost_" .. id) or 0) - now
+			slot.frame.Visible = left > 0
+			if left > 0 then
+				slot.timer.Text = string.format("%d:%02d", math.floor(left / 60), math.floor(left % 60))
+			end
+		end
+		task.wait(0.5)
+	end
+end)
 
 -- ============================================================
 -- Invisible : tu te vois en fantôme, avec le temps restant et un bouton pour réapparaître

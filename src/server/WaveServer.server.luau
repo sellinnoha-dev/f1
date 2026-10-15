@@ -566,6 +566,30 @@ local function makeCreatureModel(def)
 	return model
 end
 
+-- Copies des créatures pour l'écran du joueur (INDEX, ouverture de caisses)
+task.defer(function()
+	local folder = Instance.new("Folder")
+	folder.Name = "CritterModels"
+	for _, def in ipairs(Config.Creatures) do
+		local ok, model = pcall(function()
+			return buildCustomCreature(def) or buildCreature(def)
+		end)
+		if ok and model then
+			model.Name = def.id
+			for _, descendant in ipairs(model:GetDescendants()) do
+				if descendant:IsA("BasePart") then
+					descendant.Anchored = true
+				elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Sparkles") or descendant:IsA("Light") then
+					descendant:Destroy()
+				end
+			end
+			CollectionService:RemoveTag(model, "Divine")
+			model.Parent = folder
+		end
+	end
+	folder.Parent = ReplicatedStorage
+end)
+
 local function creatureLabel(model, def, offset)
 	local rarity = raritiesById[def.rarity]
 	return createBillboard(model.PrimaryPart, def.name, rarity.name .. "  ·  $" .. formatMoney(def.income) .. "/s",
@@ -995,12 +1019,17 @@ end
 -- Améliorations (on marche sur le bouton pour acheter)
 -- ============================================================
 
+-- Boost acheté encore actif ? (fin stockée en attribut, en temps serveur)
+local function boostActive(owner, id)
+	return (owner:GetAttribute("Boost_" .. id) or 0) > workspace:GetServerTimeNow()
+end
+
 local function applySpeed(player)
 	local humanoid = getHumanoid(player)
 	local data = playerData[player]
 	if humanoid and data then
 		humanoid.WalkSpeed = 16 + upgradeLevel(data, "speed") * upgradesById.speed.perLevel
-			+ (hasPass(player, "speed") and 8 or 0)
+			+ (hasPass(player, "speed") and 8 or 0) + (boostActive(player, "speed") and 8 or 0)
 	end
 end
 
@@ -1464,8 +1493,9 @@ RunService.Heartbeat:Connect(function()
 			local humanoid = getHumanoid(player)
 			if root and humanoid and humanoid.Health > 0 then
 				local position = root.Position
+				local shielded = (player:GetAttribute("ShieldUntil") or 0) > now
 				if position.X > 0 and position.X >= front - 2 and position.X <= back
-					and position.Y > Config.SafeDepth then
+					and position.Y > Config.SafeDepth and not shielded then
 					loseCarried(player)
 					humanoid.Health = 0
 					notify(player, "The " .. tostring(workspace:GetAttribute("WaveName")) .. " got you!")
@@ -1485,7 +1515,13 @@ RunService.Heartbeat:Connect(function()
 			-- Après la vague : toutes nouvelles créatures, et peut-être une DIVINE
 			task.spawn(function()
 				refillAll()
-				if math.random() < Config.DivineChance then
+				local chance = Config.DivineChance
+				for _, agent in ipairs(Players:GetPlayers()) do
+					if boostActive(agent, "luck2x") then
+						chance = Config.DivineChance * 2
+					end
+				end
+				if math.random() < chance then
 					spawnDivine()
 				end
 			end)
@@ -1691,6 +1727,30 @@ local function useItem(player, item)
 		notify(player, "You froze " .. target.Name .. "!")
 		notify(target, player.Name .. " froze you!")
 		return true
+	elseif item.id == "shield" then
+		player:SetAttribute("ShieldUntil", workspace:GetServerTimeNow() + item.duration)
+		local bubble = makePart(character, {
+			Name = "ShieldBubble", Shape = Enum.PartType.Ball, Size = Vector3.one * 8, CFrame = root.CFrame,
+			Color = Color3.fromRGB(90, 200, 255), Material = Enum.Material.ForceField, Transparency = 0,
+			Anchored = false, CanCollide = false, CanQuery = false, CanTouch = false, Massless = true,
+		})
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = root
+		weld.Part1 = bubble
+		weld.Parent = bubble
+		task.delay(item.duration, function()
+			bubble:Destroy()
+		end)
+		notify(player, "Bubble Shield on for " .. item.duration .. "s: the wave can't hurt you!")
+		return true
+	elseif item.id == "teleport" then
+		poof(root.Position, Color3.fromRGB(200, 120, 255))
+		local data = playerData[player]
+		if data and data.plot then
+			character:PivotTo(data.plot.spawn.CFrame + Vector3.new(0, 4, 0))
+		end
+		notify(player, "Teleported home!")
+		return true
 	elseif item.id == "raidkey" then
 		raidUntil[player] = os.clock() + item.duration
 		player:SetAttribute("RaidUntil", workspace:GetServerTimeNow() + item.duration)
@@ -1707,6 +1767,8 @@ local HOLD = {
 	cloak = CFrame.new(0, -1.45, 0),
 	freeze = CFrame.Angles(0, -math.pi / 2, 0) * CFrame.new(0.6, 0.75, 0),
 	raidkey = CFrame.Angles(0, -math.pi / 2, 0) * CFrame.new(1, 0, 0),
+	shield = CFrame.new(0, 0, 0.9),
+	teleport = CFrame.new(0, 0, 0.8),
 }
 
 local syncItemTools -- défini juste en dessous
@@ -1772,26 +1834,32 @@ function syncItemTools(player)
 	for _, item in ipairs(Config.Items) do
 		local count = data.items[item.id] or 0
 		player:SetAttribute("Item_" .. item.id, count)
-		local tool
-		for _, container in ipairs({ backpack, player.Character }) do
+		-- Une case par objet : 3 objets achetés = 3 cases dans la barre
+		local tools = {}
+		for _, container in ipairs({ player.Character, backpack }) do
 			if container then
 				for _, child in ipairs(container:GetChildren()) do
 					if child:IsA("Tool") and child:GetAttribute("ItemId") == item.id then
-						tool = child
+						table.insert(tools, child)
 					end
 				end
 			end
 		end
-		if count > 0 then
-			if not tool and backpack then
-				tool = makeItemTool(player, item)
-				tool.Parent = backpack
+		while #tools > count do
+			local extra = table.remove(tools)
+			if extra then
+				extra:Destroy()
 			end
-			if tool then
-				tool.Name = item.name .. " x" .. count
+		end
+		while #tools < count and backpack do
+			local ok, tool = pcall(makeItemTool, player, item)
+			if not ok then
+				warn("[Tsunami] Objet impossible à créer :", item.id, tool)
+				break
 			end
-		elseif tool then
-			tool:Destroy()
+			tool.Name = item.name
+			tool.Parent = backpack
+			table.insert(tools, tool)
 		end
 	end
 end
@@ -2409,6 +2477,125 @@ for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(onPlayerAdded, player)
 end
 
+
+-- ============================================================
+-- Caisses (crates) et boosts, achetés avec l'argent du jeu dans le SHOP
+-- ============================================================
+
+local cratesById, boostsById = {}, {}
+for _, crate in ipairs(Config.Crates or {}) do
+	cratesById[crate.id] = crate
+end
+for _, boost in ipairs(Config.Boosts or {}) do
+	boostsById[boost.id] = boost
+end
+
+local crateEvent = Instance.new("RemoteEvent")
+crateEvent.Name = "CrateOpened"
+crateEvent.Parent = ReplicatedStorage
+
+-- Tire une rareté selon des chances ; avec 2x Luck, les raretés hautes comptent double
+local function rollRarity(chances, lucky)
+	local lowest = math.huge
+	for id in pairs(chances) do
+		lowest = math.min(lowest, rarityIndex[id] or math.huge)
+	end
+	local weights, total = {}, 0
+	for _, rarity in ipairs(Config.Rarities) do
+		local weight = chances[rarity.id]
+		if weight then
+			if lucky and rarityIndex[rarity.id] > lowest then
+				weight *= 2
+			end
+			weights[rarity.id] = weight
+			total += weight
+		end
+	end
+	local pick = math.random() * total
+	for _, rarity in ipairs(Config.Rarities) do
+		local weight = weights[rarity.id]
+		if weight then
+			pick -= weight
+			if pick <= 0 then
+				return rarity.id
+			end
+		end
+	end
+	return Config.Rarities[1].id
+end
+
+local function openCrate(player, crate)
+	local data = playerData[player]
+	local cash = getCash(player)
+	if not data or not cash or not data.plot then
+		return
+	end
+	local free
+	for index = 1, pedestalCount(data) do
+		if not data.creatures[index] then
+			free = index
+			break
+		end
+	end
+	if not free then
+		notify(player, "No free pedestal! Sell a critter first (hold E on it).")
+		return
+	end
+	if cash.Value < crate.price then
+		notify(player, "Not enough cash! " .. crate.name .. " costs $" .. formatMoney(crate.price))
+		return
+	end
+	cash.Value -= crate.price
+	local rarityId = rollRarity(crate.chances, boostActive(player, "luck2x"))
+	local def
+	for i = rarityIndex[rarityId], 1, -1 do
+		local list = creaturesByRarity[Config.Rarities[i].id]
+		if list and #list > 0 then
+			def = list[math.random(#list)]
+			break
+		end
+	end
+	data.creatures[free] = def.id
+	data.discovered[def.id] = true
+	data.best = math.max(data.best or 0, rarityIndex[def.rarity])
+	syncStats(player)
+	crateEvent:FireClient(player, crate.id, def.id)
+	-- La créature apparaît sur son piédestal après l'animation d'ouverture
+	task.delay(4.5, function()
+		if data.plot and data.creatures[free] == def.id then
+			renderPedestal(data.plot, free)
+		end
+	end)
+	if rarityIndex[def.rarity] >= 5 then
+		task.delay(4.5, function()
+			notifyAll(player.Name .. " got a " .. raritiesById[def.rarity].name .. " " .. def.name .. " from a " .. crate.name .. "!")
+		end)
+	end
+end
+
+-- Prix d'un boost : un prix de base, qui grandit avec les revenus du joueur
+local function boostPrice(player, boost)
+	return math.max(boost.price, math.floor((player:GetAttribute("Income") or 0) * boost.incomeMinutes * 60))
+end
+
+local function buyBoost(player, boost)
+	local cash = getCash(player)
+	if not cash then
+		return
+	end
+	local price = boostPrice(player, boost)
+	if cash.Value < price then
+		notify(player, "Not enough cash! " .. boost.name .. " costs $" .. formatMoney(price))
+		return
+	end
+	cash.Value -= price
+	local now = workspace:GetServerTimeNow()
+	local current = math.max(now, player:GetAttribute("Boost_" .. boost.id) or 0)
+	player:SetAttribute("Boost_" .. boost.id, current + boost.duration)
+	applySpeed(player)
+	notify(player, boost.name .. " active for " .. math.floor(boost.duration / 60) .. " more minutes!")
+end
+
 -- Achats depuis le menu SHOP / UPGRADES (n'importe où sur la carte)
 local shopEvent = Instance.new("RemoteEvent")
 shopEvent.Name = "ShopAction"
@@ -2421,6 +2608,10 @@ shopEvent.OnServerEvent:Connect(function(player, kind, id)
 		buyItem(player, itemsById[id])
 	elseif kind == "upgrade" and upgradesById[id] then
 		buyUpgrade(player, upgradesById[id])
+	elseif kind == "crate" and cratesById[id] then
+		openCrate(player, cratesById[id])
+	elseif kind == "boost" and boostsById[id] then
+		buyBoost(player, boostsById[id])
 	end
 end)
 
@@ -2448,6 +2639,10 @@ task.spawn(function()
 				if hasPass(player, "cash2x") then
 					income *= 2
 				end
+				if boostActive(player, "cash2x") then
+					income *= 2
+				end
+				applySpeed(player) -- la potion de vitesse s'arrête toute seule
 				if income > 0 then
 					cash.Value += income
 				end
@@ -2673,6 +2868,76 @@ local function nextWaypoint(position, target, plot)
 	return target
 end
 
+local PathfindingService = game:GetService("PathfindingService")
+
+-- Fait avancer un bot vers sa cible. Dans la zone des bases (murs, autres bases),
+-- il calcule un vrai chemin ; s'il reste bloqué, il saute puis recalcule.
+local function moveBot(state, humanoid, root, target, plot, mode)
+	local position = root.Position
+	local now = os.clock()
+	-- Bloqué ? (il n'a presque pas bougé depuis 2,5 s)
+	if not state.lastPosition or (flat(position) - flat(state.lastPosition)).Magnitude > 2 then
+		state.lastPosition = position
+		state.lastMoved = now
+	end
+	local stuckFor = now - (state.lastMoved or now)
+	if mode ~= "hide" and stuckFor > 2.5 then
+		humanoid.Jump = true
+		state.path = nil
+	end
+	if mode ~= "hide" and stuckFor > 9 then
+		-- Vraiment coincé : il retourne dans sa base (comme un joueur qui se réinitialise)
+		root.Parent:PivotTo(plot.spawn.CFrame + Vector3.new(0, 4, 0))
+		state.lastMoved = now
+		state.path = nil
+		return
+	end
+	if position.Y < -1.5 and mode ~= "hide" then
+		humanoid.Jump = true -- sortir d'une tranchée
+	end
+
+	local inBaseArea = position.X < -2 or target.X < -2
+	if not inBaseArea then
+		state.path = nil
+		humanoid:MoveTo(target)
+		return
+	end
+	-- Pour aller sur le chemin, on vise d'abord l'entrée du chemin
+	local goal = target.X > 2 and Vector3.new(6, 0, math.clamp(target.Z, -18, 18)) or target
+	if position.X > 0 and goal.X > 0 then
+		humanoid:MoveTo(target)
+		return
+	end
+	if not state.path or not state.pathGoal or (state.pathGoal - goal).Magnitude > 6 or now - (state.pathTime or 0) > 4 then
+		state.pathGoal = goal
+		state.pathTime = now
+		state.path = nil
+		local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, WaypointSpacing = 6 })
+		local ok = pcall(function()
+			path:ComputeAsync(position, goal)
+		end)
+		if ok and path.Status == Enum.PathStatus.Success then
+			state.path = path:GetWaypoints()
+			state.waypoint = 2
+		end
+	end
+	if state.path then
+		local waypoint = state.path[state.waypoint]
+		while waypoint and (flat(waypoint.Position) - flat(position)).Magnitude < 3 do
+			state.waypoint += 1
+			waypoint = state.path[state.waypoint]
+		end
+		if waypoint then
+			humanoid:MoveTo(waypoint.Position)
+			if waypoint.Action == Enum.PathWaypointAction.Jump then
+				humanoid.Jump = true
+			end
+			return
+		end
+	end
+	humanoid:MoveTo(nextWaypoint(position, goal, plot))
+end
+
 local function botBrain(bot)
 	local state = botStates[bot]
 	local personality = state.personality
@@ -2806,13 +3071,9 @@ local function botBrain(bot)
 			end
 		end
 
-		-- Déplacement (en passant par l'entrée de la base) ; saute pour sortir d'une tranchée
+		-- Déplacement : chemin calculé dans la zone des bases, tout droit sur le chemin
 		if target then
-			local waypoint = nextWaypoint(position, target, plot)
-			humanoid:MoveTo(waypoint)
-			if position.Y < -1.5 and mode ~= "hide" then
-				humanoid.Jump = true
-			end
+			moveBot(state, humanoid, root, target, plot, mode)
 		end
 	end
 end

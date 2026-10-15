@@ -36,7 +36,7 @@ notifyEvent.Name = "Notify"
 notifyEvent.Parent = ReplicatedStorage
 
 local function notify(player, text)
-	if player and player.Parent then
+	if player and player.Parent and player:IsA("Player") then
 		notifyEvent:FireClient(player, text)
 	end
 end
@@ -108,13 +108,43 @@ local function getCash(player)
 	return stats and stats:FindFirstChild("Cash")
 end
 
+-- Les bots sont de faux joueurs (un dossier + un personnage) : ces petites
+-- fonctions marchent pour les deux
+local botCharacters = {} -- [bot] = son personnage
+
+local function characterOf(owner)
+	if not owner then
+		return nil
+	end
+	if owner:IsA("Player") then
+		return owner.Character
+	end
+	return botCharacters[owner]
+end
+
+local function ownerId(owner)
+	if owner:IsA("Player") then
+		return owner.UserId
+	end
+	return -(owner:GetAttribute("BotId") or 1)
+end
+
+-- Tous ceux qui jouent : les vrais joueurs + les bots
+local function allAgents()
+	local list = Players:GetPlayers()
+	for bot in pairs(botCharacters) do
+		table.insert(list, bot)
+	end
+	return list
+end
+
 local function getRoot(player)
-	local character = player.Character
+	local character = characterOf(player)
 	return character and character:FindFirstChild("HumanoidRootPart")
 end
 
 local function getHumanoid(player)
-	local character = player.Character
+	local character = characterOf(player)
 	return character and character:FindFirstChildOfClass("Humanoid")
 end
 
@@ -537,12 +567,14 @@ for _, range in ipairs(trenchRanges) do
 		CFrame = CFrame.new((range[1] + range[2]) / 2, (GROUND_BOTTOM - depth) / 2, 0),
 		Color = Color3.fromRGB(70, 60, 50), Material = Enum.Material.Slate,
 	})
-	-- Marche côté base pour sortir (on saute dessus puis dehors)
-	makePart(map, {
-		Name = "TrenchStep", Size = Vector3.new(4, depth / 2, Config.PathWidth),
-		CFrame = CFrame.new(range[1] + 2, -depth + depth / 4, 0),
-		Color = Color3.fromRGB(90, 80, 70), Material = Enum.Material.Slate,
-	})
+	-- Marches des deux côtés pour sortir (on saute dessus puis dehors)
+	for _, x in ipairs({ range[1] + 2, range[2] - 2 }) do
+		makePart(map, {
+			Name = "TrenchStep", Size = Vector3.new(4, depth / 2, Config.PathWidth),
+			CFrame = CFrame.new(x, -depth + depth / 4, 0),
+			Color = Color3.fromRGB(90, 80, 70), Material = Enum.Material.Slate,
+		})
+	end
 	for _, x in ipairs({ range[1], range[2] }) do
 		makePart(map, {
 			Name = "TrenchEdge", Size = Vector3.new(0.6, 0.2, Config.PathWidth), CFrame = CFrame.new(x, 0.1, 0),
@@ -663,8 +695,31 @@ local function pedestalCount(data)
 	return math.min(#PEDESTAL_SPOTS, Config.BasePedestals + upgradeLevel(data, "pedestals") * upgrade.perLevel)
 end
 
-local function carryMax(data)
-	return 1 + upgradeLevel(data, "carry") * upgradesById.carry.perLevel
+-- Game Pass possédé ? (les bots n'en ont jamais)
+local function hasPass(owner, key)
+	return owner ~= nil and owner:GetAttribute("Pass_" .. key) == true
+end
+
+local function carryMax(data, owner)
+	local bonus = (owner and hasPass(owner, "carry")) and 2 or 0
+	return 1 + upgradeLevel(data, "carry") * upgradesById.carry.perLevel + bonus
+end
+
+-- Infos pour l'écran du joueur (menus UPGRADES et INDEX)
+local function syncStats(owner)
+	local data = playerData[owner]
+	if not data then
+		return
+	end
+	for _, upgrade in ipairs(Config.Upgrades) do
+		owner:SetAttribute("Up_" .. upgrade.id, upgradeLevel(data, upgrade.id))
+	end
+	owner:SetAttribute("Best", data.best or 0)
+	local found = {}
+	for id in pairs(data.discovered or {}) do
+		table.insert(found, id)
+	end
+	owner:SetAttribute("Discovered", table.concat(found, ","))
 end
 
 local PLOT_COLORS = {
@@ -835,7 +890,7 @@ function renderPedestal(plot, index)
 	prompt.HoldDuration = 1
 	prompt.MaxActivationDistance = 9
 	prompt.RequiresLineOfSight = false
-	prompt:SetAttribute("OwnerId", plot.owner.UserId)
+	prompt:SetAttribute("OwnerId", ownerId(plot.owner))
 	CollectionService:AddTag(prompt, "OwnerOnly")
 	prompt.Parent = base
 	prompt.Triggered:Connect(function(player)
@@ -851,7 +906,7 @@ function renderPedestal(plot, index)
 	stealPrompt.HoldDuration = 1.5
 	stealPrompt.MaxActivationDistance = 9
 	stealPrompt.RequiresLineOfSight = false
-	stealPrompt:SetAttribute("OwnerId", plot.owner.UserId)
+	stealPrompt:SetAttribute("OwnerId", ownerId(plot.owner))
 	CollectionService:AddTag(stealPrompt, "ThiefOnly")
 	stealPrompt.Parent = base
 	stealPrompt.Triggered:Connect(function(player)
@@ -877,6 +932,7 @@ local function applySpeed(player)
 	local data = playerData[player]
 	if humanoid and data then
 		humanoid.WalkSpeed = 16 + upgradeLevel(data, "speed") * upgradesById.speed.perLevel
+			+ (hasPass(player, "speed") and 8 or 0)
 	end
 end
 
@@ -902,7 +958,7 @@ end
 local function updateCarryAttributes(player)
 	local data = playerData[player]
 	player:SetAttribute("Carrying", #(carrying[player] or {}))
-	player:SetAttribute("CarryMax", carryMax(data))
+	player:SetAttribute("CarryMax", carryMax(data, player))
 end
 
 local function buyUpgrade(player, upgrade)
@@ -924,6 +980,7 @@ local function buyUpgrade(player, upgrade)
 	cash.Value -= price
 	data.upgrades[upgrade.id] = level + 1
 	notify(player, upgrade.name .. " upgraded to level " .. (level + 1) .. "!")
+	syncStats(player)
 	applySpeed(player)
 	updateCarryAttributes(player)
 	if upgrade.id == "pedestals" then
@@ -974,7 +1031,7 @@ end
 
 -- Mini-créatures empilées au-dessus de la tête de celui qui les porte
 local function updateCarryVisual(player)
-	local character = player.Character
+	local character = characterOf(player)
 	local head = character and character:FindFirstChild("Head")
 	if not character then
 		return
@@ -1017,7 +1074,7 @@ local function grabCreature(player, entry)
 	end
 	local list = carrying[player] or {}
 	carrying[player] = list
-	if #list >= carryMax(data) then
+	if #list >= carryMax(data, player) then
 		notify(player, "Your hands are full! Bring them back to your base (or upgrade CARRY).")
 		return
 	end
@@ -1027,6 +1084,11 @@ local function grabCreature(player, entry)
 	end
 	removeGroundCreature(entry)
 	table.insert(list, { id = entry.def.id })
+	if data.discovered and not data.discovered[entry.def.id] then
+		data.discovered[entry.def.id] = true
+		notify(player, "NEW critter discovered: " .. entry.def.name .. "! (check your INDEX)")
+		syncStats(player)
+	end
 	updateCarryVisual(player)
 	local rarity = raritiesById[entry.def.rarity]
 	notify(player, "Got " .. entry.def.name .. " (" .. rarity.name .. ")! Run back to your base!")
@@ -1329,7 +1391,7 @@ RunService.Heartbeat:Connect(function()
 		local front = waveFront()
 		local back = front + Config.WaveThickness
 		-- Les joueurs touchés (pas dans une tranchée, pas dans la zone sûre) sont emportés
-		for _, player in ipairs(Players:GetPlayers()) do
+		for _, player in ipairs(allAgents()) do
 			local root = getRoot(player)
 			local humanoid = getHumanoid(player)
 			if root and humanoid and humanoid.Health > 0 then
@@ -1392,7 +1454,7 @@ function tryStealCritter(thief, plot, index)
 	end
 	local list = carrying[thief] or {}
 	carrying[thief] = list
-	if #list >= carryMax(thiefData) then
+	if #list >= carryMax(thiefData, thief) then
 		notify(thief, "Your hands are full!")
 		return
 	end
@@ -1410,10 +1472,10 @@ task.spawn(function()
 		task.wait(0.2)
 		for _, plot in ipairs(plots) do
 			if plot.owner then
-				for _, player in ipairs(Players:GetPlayers()) do
+				for _, player in ipairs(allAgents()) do
 					local root = player ~= plot.owner and getRoot(player)
 					if root and inPlot(plot, root.Position) and not raidActive(player) then
-						player.Character:PivotTo(at(plot, 0, 4, -32))
+						characterOf(player):PivotTo(at(plot, 0, 4, -32))
 						notify(player, "This base is protected! (a Raid Key lets you in)")
 					end
 				end
@@ -1447,7 +1509,7 @@ end
 -- Rend un personnage invisible pour les autres (sauf les créatures qu'il porte)
 local invisibleUntil = {} -- [joueur] = os.clock() de fin
 local function setInvisible(player, invisible)
-	local character = player.Character
+	local character = characterOf(player)
 	if not character then
 		return
 	end
@@ -1518,7 +1580,7 @@ end
 
 -- Utiliser un objet : renvoie true s'il a servi (on en retire alors un du stock)
 local function useItem(player, item)
-	local character = player.Character
+	local character = characterOf(player)
 	local root = getRoot(player)
 	local humanoid = getHumanoid(player)
 	if not character or not root or not humanoid or humanoid.Health <= 0 then
@@ -1534,7 +1596,7 @@ local function useItem(player, item)
 		setInvisible(player, true)
 		notify(player, "You are invisible for " .. item.duration .. "s! (press REAPPEAR to come back)")
 		task.delay(item.duration, function()
-			if invisibleUntil[player] == untilTime and player.Character == character then
+			if invisibleUntil[player] == untilTime and characterOf(player) == character then
 				setInvisible(player, false)
 				notify(player, "You are visible again.")
 			end
@@ -1542,7 +1604,7 @@ local function useItem(player, item)
 		return true
 	elseif item.id == "freeze" then
 		local target, best = nil, item.range
-		for _, other in ipairs(Players:GetPlayers()) do
+		for _, other in ipairs(allAgents()) do
 			local otherRoot = other ~= player and getRoot(other)
 			local otherHumanoid = otherRoot and getHumanoid(other)
 			if otherHumanoid and otherHumanoid.Health > 0 then
@@ -1572,11 +1634,105 @@ end
 
 local MAX_ITEMS = 3
 
+-- Position du modèle dans la main : la pointe vers l'avant (+Z), la poignée au centre
+local HOLD = {
+	cloak = CFrame.new(0, -1.45, 0),
+	freeze = CFrame.Angles(0, -math.pi / 2, 0) * CFrame.new(0.6, 0.75, 0),
+	raidkey = CFrame.Angles(0, -math.pi / 2, 0) * CFrame.new(1, 0, 0),
+}
+
+local syncItemTools -- défini juste en dessous
+
+-- Un vrai objet Roblox (Tool) avec le modèle 3D de l'objet dans la main
+local function makeItemTool(player, item)
+	local tool = Instance.new("Tool")
+	tool.CanBeDropped = false
+	tool.ToolTip = item.description
+	tool:SetAttribute("ItemId", item.id)
+	tool.GripPos = Vector3.zero
+	tool.GripForward = Vector3.new(-1, 0, 0)
+	tool.GripRight = Vector3.new(0, 1, 0)
+	tool.GripUp = Vector3.new(0, 0, 1)
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.3, 0.3, 0.3)
+	handle.Transparency = 1
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.CFrame = CFrame.new()
+	handle.Parent = tool
+	local model = ItemModels.build(item.id)
+	model:PivotTo(HOLD[item.id] or CFrame.new())
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+			part.Massless = true
+			part.CanCollide = false
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = handle
+			weld.Part1 = part
+			weld.Parent = part
+			part.Parent = tool
+		end
+	end
+	model:Destroy()
+	local busy = false
+	tool.Activated:Connect(function()
+		if busy then
+			return
+		end
+		busy = true
+		local data = playerData[player]
+		if item.id == "cloak" and invisibleUntil[player] then
+			setInvisible(player, false) -- recliquer avec la cape = réapparaître
+		elseif data and (data.items[item.id] or 0) > 0 and useItem(player, item) then
+			data.items[item.id] -= 1
+			syncItemTools(player)
+		end
+		busy = false
+	end)
+	return tool
+end
+
+-- Met la barre d'outils à jour : un outil par objet possédé, avec la quantité dans le nom
+function syncItemTools(player)
+	local data = playerData[player]
+	if not data or not player:IsA("Player") then
+		return
+	end
+	local backpack = player:FindFirstChild("Backpack")
+	for _, item in ipairs(Config.Items) do
+		local count = data.items[item.id] or 0
+		player:SetAttribute("Item_" .. item.id, count)
+		local tool
+		for _, container in ipairs({ backpack, player.Character }) do
+			if container then
+				for _, child in ipairs(container:GetChildren()) do
+					if child:IsA("Tool") and child:GetAttribute("ItemId") == item.id then
+						tool = child
+					end
+				end
+			end
+		end
+		if count > 0 then
+			if not tool and backpack then
+				tool = makeItemTool(player, item)
+				tool.Parent = backpack
+			end
+			if tool then
+				tool.Name = item.name .. " x" .. count
+			end
+		elseif tool then
+			tool:Destroy()
+		end
+	end
+end
+
 local function setItemCount(player, itemId, count)
 	local data = playerData[player]
 	if data then
 		data.items[itemId] = count
-		player:SetAttribute("Item_" .. itemId, count)
+		syncItemTools(player)
 	end
 end
 
@@ -1602,7 +1758,7 @@ local function buyItem(player, item)
 	end
 	cash.Value -= item.price
 	setItemCount(player, item.id, count + 1)
-	notify(player, "You bought a " .. item.name .. "! Use it with the item bar (bottom left) or keys 1-2-3.")
+	notify(player, "You bought a " .. item.name .. "! It's in your toolbar, next to your bat.")
 end
 
 -- Le joueur clique sur un objet de sa barre (ou appuie sur 1, 2, 3)
@@ -1727,10 +1883,66 @@ end
 local function sendHome(player)
 	local data = playerData[player]
 	local root = getRoot(player)
-	if data and data.plot and root and player.Character then
+	if data and data.plot and root then
 		poof(root.Position, Color3.fromRGB(255, 255, 255))
-		player.Character:PivotTo(data.plot.spawn.CFrame + Vector3.new(0, 4, 0))
+		characterOf(player):PivotTo(data.plot.spawn.CFrame + Vector3.new(0, 4, 0))
 	end
+end
+
+-- Petites étoiles qui jaillissent quand on se fait frapper
+local function hitStars(position)
+	local holder = makePart(workspace, {
+		Name = "Bonk", Size = Vector3.one, CFrame = CFrame.new(position), Transparency = 1,
+		CanCollide = false, CanQuery = false, CanTouch = false,
+	})
+	local stars = Instance.new("ParticleEmitter")
+	stars.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	stars.Color = ColorSequence.new(Color3.fromRGB(255, 230, 80))
+	stars.Size = NumberSequence.new(1.5, 0)
+	stars.Lifetime = NumberRange.new(0.4, 0.8)
+	stars.Speed = NumberRange.new(10, 20)
+	stars.SpreadAngle = Vector2.new(180, 180)
+	stars.LightEmission = 1
+	stars.Rate = 0
+	stars.Parent = holder
+	stars:Emit(30)
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxasset://sounds/action_jump_land.mp3"
+	sound.Volume = 2
+	sound.PlaybackSpeed = 0.8
+	sound.Parent = holder
+	sound:Play()
+	task.delay(2, function()
+		holder:Destroy()
+	end)
+end
+
+-- Mouvement du bras : élan vers le haut, puis gros coup vers l'avant
+local TweenService = game:GetService("TweenService")
+local function swingArm(character)
+	local shoulder = character:FindFirstChild("RightShoulder", true) or character:FindFirstChild("Right Shoulder", true)
+	if not shoulder or not shoulder:IsA("Motor6D") then
+		return
+	end
+	local original = shoulder:GetAttribute("OriginalC0")
+	if not original then
+		original = shoulder.C0
+		shoulder:SetAttribute("OriginalC0", original)
+	end
+	local r15 = shoulder.Name == "RightShoulder"
+	local function pose(degrees)
+		local angle = math.rad(degrees)
+		return original * (r15 and CFrame.Angles(angle, 0, 0) or CFrame.Angles(0, 0, angle))
+	end
+	task.spawn(function()
+		local windup = TweenService:Create(shoulder, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { C0 = pose(75) })
+		windup:Play()
+		windup.Completed:Wait()
+		local smash = TweenService:Create(shoulder, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.In), { C0 = pose(-70) })
+		smash:Play()
+		smash.Completed:Wait()
+		TweenService:Create(shoulder, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { C0 = original }):Play()
+	end)
 end
 
 local function swingBat(player)
@@ -1739,13 +1951,14 @@ local function swingBat(player)
 		return
 	end
 	local look = root.CFrame.LookVector
-	for _, other in ipairs(Players:GetPlayers()) do
+	for _, other in ipairs(allAgents()) do
 		local otherRoot = other ~= player and getRoot(other)
 		local humanoid = otherRoot and getHumanoid(other)
 		if humanoid and humanoid.Health > 0 then
 			local offset = otherRoot.Position - root.Position
 			if offset.Magnitude < 9 and offset.Unit:Dot(look) > 0.2 then
 				local dropped = dropCarried(other, otherRoot.Position)
+				hitStars(otherRoot.Position + Vector3.new(0, 2, 0))
 				if dropped > 0 then
 					sendHome(other)
 					notify(other, player.Name .. " bonked you! You dropped your critters.")
@@ -1759,6 +1972,7 @@ local function swingBat(player)
 	end
 end
 
+local useBat -- défini juste en dessous
 local function makeBat()
 	local tool = Instance.new("Tool")
 	tool.Name = "Bat"
@@ -1801,23 +2015,61 @@ local function makeBat()
 		Color3.fromRGB(30, 30, 35), Enum.Material.Fabric, Enum.PartType.Cylinder)
 	batPart("Knob", Vector3.new(0.2, 0.55, 0.55), CFrame.new(0, 0, -2) * CFrame.Angles(0, math.rad(90), 0),
 		Color3.fromRGB(30, 30, 35), Enum.Material.SmoothPlastic, Enum.PartType.Cylinder)
+	-- Traînée blanche derrière la batte pendant le coup
+	local tipAttachment = Instance.new("Attachment")
+	tipAttachment.Position = Vector3.new(0, 0, 2.2)
+	tipAttachment.Parent = handle
+	local baseAttachment = Instance.new("Attachment")
+	baseAttachment.Position = Vector3.new(0, 0, 0)
+	baseAttachment.Parent = handle
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = tipAttachment
+	trail.Attachment1 = baseAttachment
+	trail.Lifetime = 0.25
+	trail.Color = ColorSequence.new(Color3.new(1, 1, 1))
+	trail.Transparency = NumberSequence.new(0.2, 1)
+	trail.LightEmission = 0.6
+	trail.Enabled = false
+	trail.Parent = handle
+	local whoosh = Instance.new("Sound")
+	whoosh.SoundId = "rbxasset://sounds/swordslash.wav"
+	whoosh.Volume = 1
+	whoosh.Parent = handle
+
 	local ready = 0
 	tool.Activated:Connect(function()
 		local player = Players:GetPlayerFromCharacter(tool.Parent)
 		if not player or os.clock() < ready then
 			return
 		end
-		ready = os.clock() + 1
-		-- Lance l'animation de coup de l'avatar (gérée par le script Animate de Roblox)
-		local anim = Instance.new("StringValue")
-		anim.Name = "toolanim"
-		anim.Value = "Slash"
-		anim.Parent = tool
-		task.delay(0.15, function()
-			swingBat(player)
-		end)
+		ready = os.clock() + 0.8
+		useBat(player, tool)
 	end)
 	return tool
+end
+
+-- Un coup de batte (joueur ou bot) : bras, traînée, son, puis le coup touche
+function useBat(owner, tool)
+	local character = characterOf(owner)
+	if not character then
+		return
+	end
+	swingArm(character)
+	local handle = tool and tool:FindFirstChild("Handle")
+	local trail = handle and handle:FindFirstChildOfClass("Trail")
+	if trail then
+		trail.Enabled = true
+		task.delay(0.4, function()
+			trail.Enabled = false
+		end)
+	end
+	local whoosh = handle and handle:FindFirstChildOfClass("Sound")
+	if whoosh then
+		whoosh:Play()
+	end
+	task.delay(0.18, function()
+		swingBat(owner)
+	end)
 end
 
 local function giveBat(player)
@@ -1844,7 +2096,7 @@ if Config.SaveEnabled then
 end
 
 local function loadData(player)
-	local data = { creatures = {}, upgrades = {}, items = {}, cash = Config.StartingCash, best = 0, loaded = true }
+	local data = { creatures = {}, upgrades = {}, items = {}, discovered = {}, cash = Config.StartingCash, best = 0, loaded = true }
 	if not dataStore then
 		return data
 	end
@@ -1857,6 +2109,13 @@ local function loadData(player)
 	elseif type(saved) == "table" then
 		data.cash = tonumber(saved.cash) or data.cash
 		data.best = tonumber(saved.best) or 0
+		if type(saved.discovered) == "table" then
+			for _, id in ipairs(saved.discovered) do
+				if creaturesById[id] then
+					data.discovered[id] = true
+				end
+			end
+		end
 		if type(saved.items) == "table" then
 			for _, item in ipairs(Config.Items) do
 				local count = tonumber(saved.items[item.id])
@@ -1890,6 +2149,10 @@ local function saveData(player)
 	if not dataStore or not data or not data.loaded or not cash then
 		return
 	end
+	local discovered = {}
+	for id in pairs(data.discovered) do
+		table.insert(discovered, id)
+	end
 	local creatures = {}
 	for index, id in pairs(data.creatures) do
 		table.insert(creatures, { index = index, id = id })
@@ -1901,6 +2164,7 @@ local function saveData(player)
 			creatures = creatures,
 			best = data.best,
 			items = data.items,
+			discovered = discovered,
 		})
 	end)
 	if not ok then
@@ -1929,7 +2193,10 @@ local function onCharacterAdded(player, character)
 	end
 	applySpeed(player)
 	updateCarryAttributes(player)
-	task.spawn(giveBat, player)
+	task.spawn(function()
+		giveBat(player)
+		syncItemTools(player)
+	end)
 	-- Toujours apparaître dans sa propre base
 	local data = playerData[player]
 	if data and data.plot then
@@ -1950,6 +2217,70 @@ local function onCharacterAdded(player, character)
 	end)
 end
 
+-- Donne une base libre à un joueur ou un bot
+local function claimPlot(owner, data)
+	local plot
+	for _, candidate in ipairs(plots) do
+		if not candidate.owner then
+			plot = candidate
+			break
+		end
+	end
+	if not plot then
+		return nil
+	end
+	plot.owner = owner
+	data.plot = plot
+	if owner:IsA("Player") then
+		owner.RespawnLocation = plot.spawn
+	end
+	setBillboard(plot.sign, owner.Name .. "'s BASE", "")
+	plot.barrier:SetAttribute("OwnerId", ownerId(owner))
+	plot.barrier.Transparency = 0
+	renderPedestals(plot)
+	buildPads(plot)
+	return plot
+end
+
+local function releasePlot(owner)
+	local data = playerData[owner]
+	if data and data.plot then
+		local plot = data.plot
+		plot.owner = nil
+		data.plot = nil
+		plot.pedestalFolder:ClearAllChildren()
+		plot.padFolder:ClearAllChildren()
+		setBillboard(plot.sign, "FREE BASE", "")
+		plot.barrier:SetAttribute("OwnerId", 0)
+		plot.barrier.Transparency = 1
+	end
+end
+
+local freeBotPlot -- défini plus bas (partie "Bots") : un bot laisse sa base à un vrai joueur
+
+-- Game Pass : achetés avec des Robux (les ID sont à mettre dans Config.GamePasses)
+local MarketplaceService = game:GetService("MarketplaceService")
+local passesById = {}
+for _, pass in ipairs(Config.GamePasses or {}) do
+	if pass.id ~= 0 then
+		passesById[pass.id] = pass
+	end
+end
+
+local function applyPass(player, pass)
+	player:SetAttribute("Pass_" .. pass.key, true)
+	applySpeed(player)
+	updateCarryAttributes(player)
+end
+
+MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
+	local pass = passesById[passId]
+	if purchased and pass then
+		applyPass(player, pass)
+		notify(player, "Thanks for buying " .. pass.name .. "!")
+	end
+end)
+
 local function onPlayerAdded(player)
 	local data = loadData(player)
 	if not player.Parent then
@@ -1963,32 +2294,30 @@ local function onPlayerAdded(player)
 	cash.Parent = leaderstats
 	leaderstats.Parent = player
 
-	local plot
-	for _, candidate in ipairs(plots) do
-		if not candidate.owner then
-			plot = candidate
-			break
-		end
+	for _, id in pairs(data.creatures) do
+		data.discovered[id] = true
 	end
 	playerData[player] = data
 	carrying[player] = {}
+	for _, pass in pairs(passesById) do
+		local ok, owns = pcall(function()
+			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, pass.id)
+		end)
+		if ok and owns then
+			player:SetAttribute("Pass_" .. pass.key, true)
+		end
+	end
 	player.CharacterAdded:Connect(function(character)
 		onCharacterAdded(player, character)
 	end)
+	local plot = claimPlot(player, data) or (freeBotPlot and freeBotPlot() and claimPlot(player, data))
 	if not plot then
 		warn("[Tsunami] Plus de base libre pour", player.Name)
 		spawnCharacter(player)
 		return
 	end
-	plot.owner = player
-	data.plot = plot
-	player.RespawnLocation = plot.spawn
-	setBillboard(plot.sign, player.Name .. "'s BASE", "")
-	plot.barrier:SetAttribute("OwnerId", player.UserId)
-	plot.barrier.Transparency = 0
-	renderPedestals(plot)
-	buildPads(plot)
 	updateCarryAttributes(player)
+	syncStats(player)
 	for _, item in ipairs(Config.Items) do
 		player:SetAttribute("Item_" .. item.id, data.items[item.id] or 0)
 	end
@@ -1998,16 +2327,7 @@ end
 
 local function onPlayerRemoving(player)
 	saveData(player)
-	local data = playerData[player]
-	if data and data.plot then
-		local plot = data.plot
-		plot.owner = nil
-		plot.pedestalFolder:ClearAllChildren()
-		plot.padFolder:ClearAllChildren()
-		setBillboard(plot.sign, "FREE BASE", "")
-		plot.barrier:SetAttribute("OwnerId", 0)
-		plot.barrier.Transparency = 1
-	end
+	releasePlot(player)
 	loseCarried(player) -- les créatures volées qu'il portait reviennent à leur propriétaire
 	playerData[player] = nil
 	carrying[player] = nil
@@ -2020,6 +2340,21 @@ Players.PlayerRemoving:Connect(onPlayerRemoving)
 for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(onPlayerAdded, player)
 end
+
+-- Achats depuis le menu SHOP / UPGRADES (n'importe où sur la carte)
+local shopEvent = Instance.new("RemoteEvent")
+shopEvent.Name = "ShopAction"
+shopEvent.Parent = ReplicatedStorage
+shopEvent.OnServerEvent:Connect(function(player, kind, id)
+	if typeof(kind) ~= "string" or typeof(id) ~= "string" then
+		return
+	end
+	if kind == "item" and itemsById[id] then
+		buyItem(player, itemsById[id])
+	elseif kind == "upgrade" and upgradesById[id] then
+		buyUpgrade(player, upgradesById[id])
+	end
+end)
 
 game:BindToClose(function()
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -2042,6 +2377,9 @@ task.spawn(function()
 						income += def.income
 					end
 				end
+				if hasPass(player, "cash2x") then
+					income *= 2
+				end
 				if income > 0 then
 					cash.Value += income
 				end
@@ -2059,6 +2397,423 @@ task.spawn(function()
 		end
 	end
 end)
+
+
+-- ============================================================
+-- Bots : de faux joueurs pour voir si le jeu est fun à plusieurs.
+-- Ils calculent s'ils ont le temps d'aller chercher une créature avant la vague,
+-- se cachent dans les tranchées, rentrent, achètent des améliorations et
+-- frappent à la batte ceux qui portent des créatures.
+-- ============================================================
+
+local BOT_NAMES = { "TurboTom", "NoodleNina", "WaveRider", "CrispyKai", "LuckyLou", "DashDylan", "MegaMia" }
+local BOT_PERSONALITIES = {
+	{ name = "careful", margin = 4, greed = 0.7, aggression = 0.3 },
+	{ name = "greedy", margin = 1.5, greed = 1.5, aggression = 0.5 },
+	{ name = "bully", margin = 2.5, greed = 1, aggression = 1 },
+}
+local BOT_ANIMATIONS = { run = "rbxassetid://507767714", idle = "rbxassetid://507766388" }
+local BASE_SHELTER = -8 -- devant l'entrée de la zone des bases
+local botStates = {} -- [bot] = { personality, bat, thought, lastBonk }
+local botCount = 0
+local botFolder = Instance.new("Folder")
+botFolder.Name = "Bots"
+botFolder.Parent = ServerStorage
+
+local function setThought(bot, text)
+	local state = botStates[bot]
+	if state and state.thought and state.thoughtText ~= text then
+		state.thoughtText = text
+		state.thought.Text = text
+	end
+end
+
+local spawnBotCharacter -- défini juste en dessous
+
+function spawnBotCharacter(bot)
+	local state = botStates[bot]
+	local data = playerData[bot]
+	if not state or not data or not data.plot then
+		return
+	end
+	local description = Instance.new("HumanoidDescription")
+	local skin = Color3.fromHSV(math.random() * 0.1, math.random() * 0.4 + 0.2, math.random() * 0.4 + 0.5)
+	local shirt = Color3.fromHSV(math.random(), 0.7, 0.9)
+	local pants = Color3.fromHSV(math.random(), 0.5, 0.5)
+	description.HeadColor = skin
+	description.LeftArmColor = skin
+	description.RightArmColor = skin
+	description.TorsoColor = shirt
+	description.LeftLegColor = pants
+	description.RightLegColor = pants
+	local ok, character = pcall(function()
+		return Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
+	end)
+	if not ok or not character then
+		warn("[Tsunami] Impossible de créer le bot :", character)
+		return
+	end
+	character.Name = bot.Name
+	local animate = character:FindFirstChild("Animate")
+	if animate then
+		animate:Destroy()
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	humanoid.DisplayName = bot.Name .. " [BOT]"
+	character:PivotTo(data.plot.spawn.CFrame + Vector3.new(0, 4, 0))
+	character.Parent = workspace
+	root:SetNetworkOwner(nil)
+	botCharacters[bot] = character
+	carrying[bot] = {}
+	applySpeed(bot)
+	updateCarryAttributes(bot)
+
+	-- Ce que le bot pense, au-dessus de sa tête
+	local head = character:FindFirstChild("Head")
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(9, 1.4)
+	gui.StudsOffset = Vector3.new(0, 3.2, 0)
+	gui.MaxDistance = 70
+	gui.Parent = head
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.3
+	label.Parent = gui
+	state.thought = label
+	state.thoughtText = nil
+
+	-- La batte dans la main
+	local bat = makeBat()
+	bat.Parent = character
+	state.bat = bat
+
+	-- Animations de course et d'attente (animations de base de Roblox)
+	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+	local tracks = {}
+	for name, id in pairs(BOT_ANIMATIONS) do
+		local animation = Instance.new("Animation")
+		animation.AnimationId = id
+		local loaded, track = pcall(function()
+			return animator:LoadAnimation(animation)
+		end)
+		if loaded then
+			tracks[name] = track
+		end
+	end
+	if tracks.idle then
+		tracks.idle:Play()
+	end
+	humanoid.Running:Connect(function(speed)
+		if not tracks.run or not tracks.idle then
+			return
+		end
+		if speed > 1 then
+			if not tracks.run.IsPlaying then
+				tracks.idle:Stop()
+				tracks.run:Play()
+			end
+			tracks.run:AdjustSpeed(speed / 16)
+		elseif tracks.run.IsPlaying then
+			tracks.run:Stop()
+			tracks.idle:Play()
+		end
+	end)
+
+	humanoid.Died:Connect(function()
+		loseCarried(bot)
+		if botCharacters[bot] == character then
+			botCharacters[bot] = nil
+		end
+		task.delay(3, function()
+			character:Destroy()
+			if botStates[bot] then
+				spawnBotCharacter(bot)
+			end
+		end)
+	end)
+end
+
+-- Dans combien de secondes la vague arrive à la position x ?
+local function waveTimeAt(x, assumedSpeed)
+	local now = workspace:GetServerTimeNow()
+	if workspace:GetAttribute("WaveState") == "active" then
+		local front = waveFront()
+		if front + Config.WaveThickness < x then
+			return Config.WaveInterval + (Config.WaveStartX - x) / assumedSpeed -- déjà passée ici
+		end
+		return math.max(0, (front - x) / (workspace:GetAttribute("WaveSpeed") or 50))
+	end
+	local nextAt = workspace:GetAttribute("WaveNextAt") or now
+	return math.max(0, nextAt - now) + (Config.WaveStartX - x) / assumedSpeed
+end
+
+-- Abri le plus proche où le bot peut arriver avant la vague (tranchée ou zone des bases)
+local function findShelter(x, speed, margin)
+	local best, bestDistance, fallback, fallbackDistance = nil, math.huge, BASE_SHELTER, math.huge
+	local options = { BASE_SHELTER }
+	for _, trench in ipairs(Config.Trenches) do
+		table.insert(options, trench)
+	end
+	for _, shelter in ipairs(options) do
+		local distance = math.abs(x - shelter)
+		if distance < fallbackDistance then
+			fallback, fallbackDistance = shelter, distance
+		end
+		local wave = shelter == BASE_SHELTER and math.huge or waveTimeAt(shelter, 80)
+		if distance / speed + margin < wave and distance < bestDistance then
+			best, bestDistance = shelter, distance
+		end
+	end
+	return best or fallback, (best and bestDistance or fallbackDistance) / speed
+end
+
+-- Prochain point de passage : sortir de la base par l'entrée, puis aller vers la cible
+local function flat(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+local function nextWaypoint(position, target, plot)
+	local inside = inPlot(plot, position)
+	local targetHome = inPlot(plot, target)
+	if inside then
+		if targetHome then
+			return target
+		end
+		if plot.cframe:PointToObjectSpace(position).Z > -18 then
+			return at(plot, 0, 0, -20).Position
+		end
+		return at(plot, 0, 0, -32).Position
+	end
+	local onPathSide = position.X > -3
+	if targetHome then
+		if onPathSide then
+			return Vector3.new(-10, 0, math.clamp(position.Z, -18, 18))
+		end
+		local front = at(plot, 0, 0, -30).Position
+		if (flat(position) - flat(front)).Magnitude > 5 then
+			return front
+		end
+		return target
+	end
+	if not onPathSide and target.X > 0 then
+		return Vector3.new(4, 0, math.clamp(target.Z, -18, 18))
+	end
+	return target
+end
+
+local function botBrain(bot)
+	local state = botStates[bot]
+	local personality = state.personality
+	while botStates[bot] do
+		task.wait(0.25)
+		local data = playerData[bot]
+		local root = getRoot(bot)
+		local humanoid = getHumanoid(bot)
+		if not data or not data.plot or not root or not humanoid or humanoid.Health <= 0 then
+			continue
+		end
+		local plot = data.plot
+		local position = root.Position
+		local x = position.X
+		local speed = math.max(humanoid.WalkSpeed, 1)
+		local list = carrying[bot] or {}
+		local inTrench = position.Y < -2 and x > 0
+		local target, mode = nil, nil
+
+		-- 1) Quelqu'un porte une créature tout près ? Coup de batte !
+		if os.clock() - (state.lastBonk or 0) > 1.2 then
+			for _, other in ipairs(allAgents()) do
+				local otherRoot = other ~= bot and getRoot(other)
+				if otherRoot and carrying[other] and #carrying[other] > 0
+					and (otherRoot.Position - position).Magnitude < 8 and math.random() < personality.aggression then
+					state.lastBonk = os.clock()
+					root.CFrame = CFrame.lookAt(position, Vector3.new(otherRoot.Position.X, position.Y, otherRoot.Position.Z))
+					setThought(bot, "BONK! Drop that critter!")
+					useBat(bot, state.bat)
+					break
+				end
+			end
+		end
+
+		-- 2) Danger : la vague arrive -> se mettre à l'abri
+		if x > -2 then
+			local shelter, timeNeeded = findShelter(x, speed, personality.margin)
+			local waveTime = waveTimeAt(x, 80)
+			local waveActive = workspace:GetAttribute("WaveState") == "active"
+			if inTrench and waveActive and waveFront() + Config.WaveThickness > x then
+				mode = "hide"
+				target = position
+				setThought(bot, "Hiding... the wave is coming!")
+			elseif waveTime < timeNeeded + personality.margin + 1 then
+				mode = "hide"
+				if shelter == BASE_SHELTER then
+					target = Vector3.new(BASE_SHELTER - 6, 0, math.clamp(position.Z, -18, 18))
+					setThought(bot, "Running back to safety!")
+				else
+					target = Vector3.new(shelter, -Config.TrenchDepth, math.clamp(position.Z, -20, 20))
+					setThought(bot, "Quick, into the trench!")
+				end
+			end
+		end
+
+		-- 3) Les mains pleines (ou plus rien d'intéressant) -> retour à la base
+		if not mode and #list >= carryMax(data, bot) then
+			mode = "home"
+		end
+
+		-- 4) Chasser la créature la plus intéressante qu'il a le temps d'aller chercher
+		if not mode then
+			local best, bestScore = nil, 0
+			for _, entry in ipairs(groundCreatures) do
+				if not entry.removed then
+					local spot = entry.model.PrimaryPart.Position
+					local travel = (flat(spot) - flat(position)).Magnitude / speed
+					local _, escape = findShelter(spot.X, speed, personality.margin)
+					if travel + escape + personality.margin < waveTimeAt(spot.X, 80) then
+						local score = (entry.def.income ^ (0.55 * personality.greed)) / (travel + 3)
+						if score > bestScore then
+							best, bestScore = entry, score
+						end
+					end
+				end
+			end
+			if best and (#list == 0 or (flat(best.model.PrimaryPart.Position) - flat(position)).Magnitude < 100) then
+				mode = "hunt"
+				target = best.model.PrimaryPart.Position
+				setThought(bot, "Going for " .. best.def.name .. "!")
+				if (flat(target) - flat(position)).Magnitude < 7 then
+					grabCreature(bot, best)
+				end
+			elseif #list > 0 then
+				mode = "home"
+			end
+		end
+
+		-- 5) À la maison : ranger, vendre si plein, acheter des améliorations
+		if mode == "home" or not mode then
+			target = data.plot.spawn.Position
+			if mode == "home" then
+				setThought(bot, "Bringing my critters home!")
+			end
+			if inPlot(plot, position) then
+				if #list > 0 then
+					-- Plus de place : il vend sa moins bonne créature
+					local free = false
+					for index = 1, pedestalCount(data) do
+						if not data.creatures[index] then
+							free = true
+						end
+					end
+					if not free then
+						local worst, worstIncome = nil, math.huge
+						for index, id in pairs(data.creatures) do
+							if creaturesById[id].income < worstIncome then
+								worst, worstIncome = index, creaturesById[id].income
+							end
+						end
+						if worst then
+							sellCreature(plot, worst)
+						end
+					end
+				else
+					local cash = getCash(bot)
+					local cheapest, cheapestPrice = nil, math.huge
+					for _, upgrade in ipairs(Config.Upgrades) do
+						local price = upgrade.prices[upgradeLevel(data, upgrade.id) + 1]
+						if price and price < cheapestPrice then
+							cheapest, cheapestPrice = upgrade, price
+						end
+					end
+					if cheapest and cash and cash.Value >= cheapestPrice then
+						setThought(bot, "Buying " .. cheapest.name .. "!")
+						buyUpgrade(bot, cheapest)
+					elseif not mode then
+						setThought(bot, "Waiting for the next wave...")
+					end
+				end
+			end
+		end
+
+		-- Déplacement (en passant par l'entrée de la base) ; saute pour sortir d'une tranchée
+		if target then
+			local waypoint = nextWaypoint(position, target, plot)
+			humanoid:MoveTo(waypoint)
+			if position.Y < -1.5 and mode ~= "hide" then
+				humanoid.Jump = true
+			end
+		end
+	end
+end
+
+local function createBot()
+	local name = "Bot"
+	for _, candidate in ipairs(BOT_NAMES) do
+		local used = false
+		for bot in pairs(botStates) do
+			if bot.Name == candidate then
+				used = true
+			end
+		end
+		if not used then
+			name = candidate
+			break
+		end
+	end
+	botCount += 1
+	local bot = Instance.new("Folder")
+	bot.Name = name
+	bot:SetAttribute("BotId", botCount)
+	local leaderstats = Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = bot
+	local cash = Instance.new("IntValue")
+	cash.Name = "Cash"
+	cash.Parent = leaderstats
+	bot.Parent = botFolder
+	local data = { creatures = {}, upgrades = {}, items = {}, discovered = {}, best = 0, loaded = false }
+	playerData[bot] = data
+	carrying[bot] = {}
+	if not claimPlot(bot, data) then
+		playerData[bot] = nil
+		bot:Destroy()
+		return nil
+	end
+	botStates[bot] = { personality = BOT_PERSONALITIES[(botCount - 1) % #BOT_PERSONALITIES + 1] }
+	spawnBotCharacter(bot)
+	task.spawn(botBrain, bot)
+	return bot
+end
+
+-- Un vrai joueur arrive et toutes les bases sont prises : un bot lui laisse la sienne
+function freeBotPlot()
+	for bot in pairs(botStates) do
+		botStates[bot] = nil
+		local character = botCharacters[bot]
+		botCharacters[bot] = nil
+		if character then
+			character:Destroy()
+		end
+		loseCarried(bot)
+		releasePlot(bot)
+		playerData[bot] = nil
+		carrying[bot] = nil
+		bot:Destroy()
+		return true
+	end
+	return false
+end
+
+if Config.BotsEnabled and (RunService:IsStudio() or not Config.BotsOnlyInStudio) then
+	task.delay(4, function()
+		for _ = 1, Config.BotCount do
+			createBot()
+		end
+	end)
+end
 
 -- ============================================================
 -- Panneau de test (Studio uniquement)
@@ -2086,6 +2841,7 @@ if RunService:IsStudio() then
 			local data = playerData[player]
 			if data then
 				data.best = #Config.Rarities
+				syncStats(player)
 				notify(player, "Test: all items unlocked")
 			end
 		elseif command == "spawnrarity" then

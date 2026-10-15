@@ -6,7 +6,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "3 - batte et objets"
+Config.Version = "4 - bots et boutique"
 Config.GameName = "Tsunami Critters"
 
 Config.StartingCash = 0
@@ -83,6 +83,7 @@ Config.WaveTypes = {
 Config.PlotCount = 8
 Config.BasePedestals = 6
 Config.SellMultiplier = 30 -- prix de vente d'une créature = son gain par seconde x 30
+-- (une DIVINE se vend pour 400 000 x 30 = 12 millions minimum : archi chère !)
 
 Config.Upgrades = {
 	{ id = "speed", name = "SPEED", perLevel = 2, description = "+2 walk speed",
@@ -92,6 +93,24 @@ Config.Upgrades = {
 	{ id = "pedestals", name = "PEDESTALS", perLevel = 2, description = "+2 pedestals",
 		prices = { 800, 8000, 80000 } },
 }
+
+-- ============================================================
+-- GAME PASS (achetés avec des Robux, c'est ce qui peut te rapporter de l'argent)
+-- Crée le pass sur le Creator Dashboard, puis remplace id = 0 par son numéro.
+-- Tant que l'id vaut 0, le bouton affiche "Coming soon".
+-- ============================================================
+Config.GamePasses = {
+	{ key = "cash2x", id = 0, name = "2x Cash", robux = 199, description = "Double all your income, forever" },
+	{ key = "carry", id = 0, name = "+2 Carry", robux = 149, description = "Carry 2 more critters at once" },
+	{ key = "speed", id = 0, name = "Speed Boost", robux = 99, description = "+8 walk speed, forever" },
+}
+
+-- ============================================================
+-- BOTS : de faux joueurs pour tester le jeu à plusieurs
+-- ============================================================
+Config.BotsEnabled = true
+Config.BotsOnlyInStudio = true -- true = seulement quand tu testes dans Studio
+Config.BotCount = 3
 
 -- ============================================================
 -- OBJETS (boutique au fond de la zone des bases). Un objet = une utilisation.
@@ -176,10 +195,10 @@ Config.Creatures = {
 		look = { body = "ball", size = 6, color = Color3.fromRGB(0, 230, 200), accent = Color3.fromRGB(255, 215, 0),
 			eyes = 2, extras = { "crown", "wings", "halo", "feet", "cape", "staff" }, material = Enum.Material.Glass } },
 
-	{ id = "prism", name = "Prism Prince", rarity = "divine", income = 50000,
+	{ id = "prism", name = "Prism Prince", rarity = "divine", income = 400000,
 		look = { body = "ball", size = 6.5, color = Color3.fromRGB(255, 255, 255), accent = Color3.fromRGB(255, 120, 255),
 			eyes = 3, extras = { "crown", "wings", "halo", "cape", "orbit", "staff" }, material = Enum.Material.Glass } },
-	{ id = "astral", name = "Astral Noodle", rarity = "divine", income = 75000,
+	{ id = "astral", name = "Astral Noodle", rarity = "divine", income = 650000,
 		look = { body = "cylinder", size = 6.5, color = Color3.fromRGB(40, 20, 90), accent = Color3.fromRGB(255, 230, 120),
 			eyes = 2, extras = { "horns", "wings", "halo", "mustache", "tail", "flames", "orbit" }, material = Enum.Material.Neon } },
 }

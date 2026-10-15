@@ -19,8 +19,22 @@ pour gagner de l'argent… et cache-toi dans une **tranchée** quand le tsunami 
 7. Sur un piédestal, maintiens **E** pour vendre la créature (gain par seconde × 30).
 8. Tout le monde a une **batte** (barre d'outils en bas, touche 1) : frappe un joueur qui porte des créatures,
    il les lâche par terre et retourne dans sa base. Sinon, ça le repousse juste un peu.
-9. **Boutique d'objets** au fond de la zone des bases (un objet = une utilisation, 3 max de chaque).
-   Ils apparaissent dans la **barre d'objets en bas à gauche** : clique dessus ou appuie sur **Z / X / C**.
+9. **Boutique d'objets** au fond de la zone des bases, ou bouton **SHOP** à gauche de l'écran
+   (un objet = une utilisation, 3 max de chaque). Ils vont dans ta barre d'outils, à côté de la batte.
+10. Menu à gauche : **SHOP** (objets + Game Pass en Robux), **UPGRADES** (acheter les améliorations de n'importe où),
+    **INDEX** (toutes les créatures, celles pas encore trouvées sont cachées).
+
+## Bots
+
+Dans Studio, 3 bots prennent des bases libres et jouent : ils vont chercher les créatures qu'ils ont le temps
+d'attraper avant la vague, se cachent dans les tranchées, rentrent, achètent des améliorations et donnent des
+coups de batte à ceux qui portent une créature. Leur pensée s'affiche au-dessus de leur tête.
+Réglages : `Config.BotsEnabled`, `Config.BotCount`, `Config.BotsOnlyInStudio`.
+
+## Game Pass (Robux)
+
+Dans `Config.GamePasses` : 2x Cash, +2 Carry, Speed Boost. Crée chaque pass sur le Creator Dashboard
+(**Monetization → Passes**), puis remplace `id = 0` par son numéro. Tant que c'est 0, le bouton affiche « coming soon ».
    - **Invisibility Cloak** (débloqué avec une créature RARE) : invisible 12 s (tu te vois en fantôme,
      bouton **REAPPEAR** pour revenir avant la fin).
    - **Freeze Ray** (EPIC) : gèle le joueur le plus proche pendant 4 s.

@@ -13,7 +13,6 @@ local StarterGui = game:GetService("StarterGui")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 local ItemModels = require(ReplicatedStorage:WaitForChild("ItemModels"))
-local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 
 local gui = Instance.new("ScreenGui")
@@ -569,22 +568,11 @@ end
 
 
 -- ============================================================
--- Barre d'objets (en bas à gauche) : modèle 3D, quantité, touche Z / X / C
+-- Menu à gauche (comme dans les jeux Roblox) : SHOP, UPGRADES, INDEX
 -- ============================================================
 local useEvent = ReplicatedStorage:WaitForChild("UseItem", 10)
-local ITEM_KEYS = { Enum.KeyCode.Z, Enum.KeyCode.X, Enum.KeyCode.C }
-local ITEM_KEY_NAMES = { "Z", "X", "C" }
-
-local itemBar = Instance.new("Frame")
-itemBar.AnchorPoint = Vector2.new(0, 1)
-itemBar.Position = UDim2.new(0, 12, 1, -20)
-itemBar.Size = UDim2.fromOffset(#Config.Items * 86, 84)
-itemBar.BackgroundTransparency = 1
-itemBar.Parent = gui
-local itemLayout = Instance.new("UIListLayout")
-itemLayout.FillDirection = Enum.FillDirection.Horizontal
-itemLayout.Padding = UDim.new(0, 8)
-itemLayout.Parent = itemBar
+local shopEvent = ReplicatedStorage:WaitForChild("ShopAction", 10)
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local function useItem(itemId)
 	if useEvent then
@@ -592,69 +580,278 @@ local function useItem(itemId)
 	end
 end
 
-for index, item in ipairs(Config.Items) do
-	local slot = Instance.new("TextButton")
-	slot.Name = item.id
-	slot.Size = UDim2.fromOffset(78, 78)
-	slot.BackgroundColor3 = Color3.fromRGB(20, 30, 50)
-	slot.BackgroundTransparency = 0.15
-	slot.Text = ""
-	slot.AutoButtonColor = true
-	slot.Visible = false
-	slot.Parent = itemBar
-	rounded(slot, 12)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = item.color
-	stroke.Thickness = 2
-	stroke.Parent = slot
-	-- Petite vue 3D de l'objet
-	local view = Instance.new("ViewportFrame")
-	view.Size = UDim2.new(1, -8, 1, -8)
-	view.Position = UDim2.fromOffset(4, 4)
-	view.BackgroundTransparency = 1
-	view.Ambient = Color3.fromRGB(200, 200, 200)
-	view.LightColor = Color3.new(1, 1, 1)
-	view.Parent = slot
-	local preview = ItemModels.build(item.id)
-	preview.Parent = view
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 40
-	local _, size = preview:GetBoundingBox()
-	local distance = size.Magnitude * 1.4
-	camera.CFrame = CFrame.lookAt(Vector3.new(distance * 0.5, distance * 0.35, -distance), Vector3.zero)
-	camera.Parent = view
-	view.CurrentCamera = camera
-	local keyLabel = textLabel(slot, {
-		Position = UDim2.fromOffset(4, 2), Size = UDim2.fromOffset(18, 18), Text = ITEM_KEY_NAMES[index],
-		TextColor3 = Color3.fromRGB(255, 220, 60),
-	})
-	keyLabel.ZIndex = 3
-	local countLabel = textLabel(slot, {
-		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -4, 1, -2), Size = UDim2.fromOffset(30, 20), Text = "x0",
-	})
-	countLabel.ZIndex = 3
-	local function refresh()
-		local count = player:GetAttribute("Item_" .. item.id) or 0
-		countLabel.Text = "x" .. count
-		slot.Visible = count > 0
-	end
-	player:GetAttributeChangedSignal("Item_" .. item.id):Connect(refresh)
-	refresh()
-	slot.Activated:Connect(function()
-		useItem(item.id)
+local raritiesById, rarityIndex = {}, {}
+for index, rarity in ipairs(Config.Rarities) do
+	raritiesById[rarity.id] = rarity
+	rarityIndex[rarity.id] = index
+end
+
+local function localNotify(text)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", { Title = Config.GameName, Text = text, Duration = 4 })
 	end)
 end
 
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then
-		return
+local function makeButton(parent, text, color, props)
+	local button = Instance.new("TextButton")
+	button.BackgroundColor3 = color
+	button.Font = Enum.Font.FredokaOne
+	button.TextScaled = true
+	button.TextColor3 = Color3.new(1, 1, 1)
+	button.Text = text
+	button.AutoButtonColor = true
+	for key, value in pairs(props or {}) do
+		button[key] = value
 	end
-	for index, key in ipairs(ITEM_KEYS) do
-		if input.KeyCode == key and Config.Items[index] then
-			useItem(Config.Items[index].id)
+	button.Parent = parent
+	rounded(button, 10)
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 2
+	stroke.Color = Color3.fromRGB(20, 20, 30)
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = button
+	return button
+end
+
+-- Fenêtre au centre de l'écran
+local panel = Instance.new("Frame")
+panel.AnchorPoint = Vector2.new(0.5, 0.5)
+panel.Position = UDim2.fromScale(0.5, 0.5)
+panel.Size = UDim2.fromOffset(620, 420)
+panel.BackgroundColor3 = Color3.fromRGB(25, 35, 60)
+panel.Visible = false
+panel.Parent = gui
+rounded(panel, 16)
+local panelStroke = Instance.new("UIStroke")
+panelStroke.Thickness = 3
+panelStroke.Color = Color3.fromRGB(80, 200, 255)
+panelStroke.Parent = panel
+local panelScale = Instance.new("UIScale")
+panelScale.Parent = panel
+local panelTitle = textLabel(panel, { Position = UDim2.fromOffset(20, 10), Size = UDim2.new(1, -90, 0, 40),
+	TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.LuckiestGuy })
+local closeButton = makeButton(panel, "X", Color3.fromRGB(220, 60, 60), {
+	AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 10), Size = UDim2.fromOffset(40, 40),
+})
+local content = Instance.new("ScrollingFrame")
+content.Position = UDim2.fromOffset(14, 60)
+content.Size = UDim2.new(1, -28, 1, -74)
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.ScrollBarThickness = 8
+content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+content.CanvasSize = UDim2.new()
+content.Parent = panel
+local grid = Instance.new("UIGridLayout")
+grid.CellSize = UDim2.fromOffset(180, 220)
+grid.CellPadding = UDim2.fromOffset(10, 10)
+grid.SortOrder = Enum.SortOrder.LayoutOrder
+grid.Parent = content
+
+local currentTab = nil
+
+local function card(color, order)
+	local frame = Instance.new("Frame")
+	frame.BackgroundColor3 = Color3.fromRGB(40, 55, 90)
+	frame.LayoutOrder = order
+	frame.Parent = content
+	rounded(frame, 12)
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 2
+	stroke.Color = color
+	stroke.Parent = frame
+	return frame
+end
+
+local function viewport(parent, model, height)
+	local view = Instance.new("ViewportFrame")
+	view.Position = UDim2.fromOffset(10, 8)
+	view.Size = UDim2.new(1, -20, 0, height)
+	view.BackgroundTransparency = 1
+	view.Ambient = Color3.fromRGB(200, 200, 200)
+	view.LightColor = Color3.new(1, 1, 1)
+	view.Parent = parent
+	model.Parent = view
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 40
+	local center, size = model:GetBoundingBox()
+	local distance = size.Magnitude * 1.3
+	camera.CFrame = CFrame.lookAt(center.Position + Vector3.new(distance * 0.5, distance * 0.3, -distance), center.Position)
+	camera.Parent = view
+	view.CurrentCamera = camera
+	return view
+end
+
+local tabs = {}
+
+function tabs.SHOP()
+	local best = player:GetAttribute("Best") or 0
+	for index, item in ipairs(Config.Items) do
+		local frame = card(item.color, index)
+		viewport(frame, ItemModels.build(item.id), 90)
+		textLabel(frame, { Position = UDim2.fromOffset(8, 100), Size = UDim2.new(1, -16, 0, 24), Text = item.name })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 124), Size = UDim2.new(1, -16, 0, 34), Text = item.description,
+			TextColor3 = Color3.fromRGB(200, 210, 230), Font = Enum.Font.FredokaOne, TextWrapped = true })
+		local needed = rarityIndex[item.requires] or 1
+		local count = player:GetAttribute("Item_" .. item.id) or 0
+		if best < needed then
+			local rarity = raritiesById[item.requires]
+			textLabel(frame, { Position = UDim2.fromOffset(8, 160), Size = UDim2.new(1, -16, 0, 18),
+				Text = "LOCKED: get a " .. rarity.name, TextColor3 = rarity.color, Font = Enum.Font.FredokaOne })
+		else
+			textLabel(frame, { Position = UDim2.fromOffset(8, 160), Size = UDim2.new(1, -16, 0, 18),
+				Text = "You have " .. count .. "/3", TextColor3 = Color3.fromRGB(150, 255, 170), Font = Enum.Font.FredokaOne })
+		end
+		local buy = makeButton(frame, "$" .. formatMoney(item.price), best >= needed and Color3.fromRGB(60, 200, 90)
+			or Color3.fromRGB(100, 100, 110), { Position = UDim2.new(0, 10, 1, -40), Size = UDim2.new(1, -20, 0, 32) })
+		buy.Activated:Connect(function()
+			shopEvent:FireServer("item", item.id)
+		end)
+	end
+	-- Game Pass (Robux)
+	for index, pass in ipairs(Config.GamePasses or {}) do
+		local frame = card(Color3.fromRGB(255, 200, 40), 100 + index)
+		textLabel(frame, { Position = UDim2.fromOffset(8, 14), Size = UDim2.new(1, -16, 0, 60), Text = "R$",
+			TextColor3 = Color3.fromRGB(255, 220, 60), Font = Enum.Font.LuckiestGuy })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 84), Size = UDim2.new(1, -16, 0, 30), Text = pass.name })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 118), Size = UDim2.new(1, -16, 0, 44), Text = pass.description,
+			TextColor3 = Color3.fromRGB(200, 210, 230), Font = Enum.Font.FredokaOne, TextWrapped = true })
+		local owned = player:GetAttribute("Pass_" .. pass.key) == true
+		local buy = makeButton(frame, owned and "OWNED" or ("R$ " .. pass.robux), owned and Color3.fromRGB(100, 100, 110)
+			or Color3.fromRGB(255, 170, 0), { Position = UDim2.new(0, 10, 1, -40), Size = UDim2.new(1, -20, 0, 32) })
+		buy.Activated:Connect(function()
+			if owned then
+				return
+			end
+			if pass.id == 0 then
+				localNotify(pass.name .. ": coming soon!")
+			else
+				MarketplaceService:PromptGamePassPurchase(player, pass.id)
+			end
+		end)
+	end
+end
+
+function tabs.UPGRADES()
+	local cashValue = cash.Value
+	for index, upgrade in ipairs(Config.Upgrades) do
+		local frame = card(Color3.fromRGB(80, 200, 255), index)
+		local level = player:GetAttribute("Up_" .. upgrade.id) or 0
+		local price = upgrade.prices[level + 1]
+		textLabel(frame, { Position = UDim2.fromOffset(8, 16), Size = UDim2.new(1, -16, 0, 44), Text = upgrade.name,
+			Font = Enum.Font.LuckiestGuy, TextColor3 = Color3.fromRGB(120, 220, 255) })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 66), Size = UDim2.new(1, -16, 0, 30),
+			Text = "Level " .. level .. " / " .. #upgrade.prices })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 102), Size = UDim2.new(1, -16, 0, 40), Text = upgrade.description,
+			TextColor3 = Color3.fromRGB(200, 210, 230), Font = Enum.Font.FredokaOne, TextWrapped = true })
+		local canBuy = price and cashValue >= price
+		local buy = makeButton(frame, price and ("$" .. formatMoney(price)) or "MAX",
+			canBuy and Color3.fromRGB(60, 200, 90) or Color3.fromRGB(100, 100, 110),
+			{ Position = UDim2.new(0, 10, 1, -40), Size = UDim2.new(1, -20, 0, 32) })
+		buy.Activated:Connect(function()
+			shopEvent:FireServer("upgrade", upgrade.id)
+		end)
+	end
+end
+
+function tabs.INDEX()
+	local found = {}
+	for id in string.gmatch(player:GetAttribute("Discovered") or "", "[^,]+") do
+		found[id] = true
+	end
+	local count = 0
+	for index, def in ipairs(Config.Creatures) do
+		local rarity = raritiesById[def.rarity]
+		local known = found[def.id] == true
+		if known then
+			count += 1
+		end
+		local frame = card(rarity.color, (rarityIndex[def.rarity] or 1) * 100 + index)
+		local swatch = Instance.new("Frame")
+		swatch.Position = UDim2.fromOffset(40, 16)
+		swatch.Size = UDim2.new(1, -80, 0, 90)
+		swatch.BackgroundColor3 = known and def.look.color or Color3.fromRGB(20, 20, 25)
+		swatch.Parent = frame
+		rounded(swatch, 45)
+		textLabel(swatch, { Size = UDim2.fromScale(1, 1), Text = known and "" or "?", TextColor3 = Color3.fromRGB(120, 120, 130) })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 116), Size = UDim2.new(1, -16, 0, 28), Text = known and def.name or "???" })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 148), Size = UDim2.new(1, -16, 0, 22), Text = rarity.name,
+			TextColor3 = rarity.color, Font = Enum.Font.FredokaOne })
+		textLabel(frame, { Position = UDim2.fromOffset(8, 176), Size = UDim2.new(1, -16, 0, 22),
+			Text = known and ("$" .. formatMoney(def.income) .. "/s") or "Not found yet",
+			TextColor3 = Color3.fromRGB(255, 220, 60), Font = Enum.Font.FredokaOne })
+	end
+	panelTitle.Text = "INDEX  " .. count .. " / " .. #Config.Creatures
+end
+
+local function refreshPanel()
+	for _, child in ipairs(content:GetChildren()) do
+		if not child:IsA("UIGridLayout") then
+			child:Destroy()
 		end
 	end
+	if currentTab then
+		panelTitle.Text = currentTab
+		tabs[currentTab]()
+	end
+end
+
+local function openTab(name)
+	if currentTab == name and panel.Visible then
+		panel.Visible = false
+		currentTab = nil
+		return
+	end
+	currentTab = name
+	panel.Visible = true
+	panelScale.Scale = 0.6
+	TweenService:Create(panelScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	refreshPanel()
+end
+closeButton.Activated:Connect(function()
+	panel.Visible = false
+	currentTab = nil
 end)
+
+-- Le menu se met à jour tout seul quand quelque chose change
+local refreshQueued = false
+local function queueRefresh()
+	if panel.Visible and not refreshQueued then
+		refreshQueued = true
+		task.delay(0.3, function()
+			refreshQueued = false
+			if panel.Visible then
+				refreshPanel()
+			end
+		end)
+	end
+end
+player.AttributeChanged:Connect(queueRefresh)
+cash.Changed:Connect(function()
+	if currentTab == "UPGRADES" then
+		queueRefresh()
+	end
+end)
+
+local sideMenu = Instance.new("Frame")
+sideMenu.AnchorPoint = Vector2.new(0, 0.5)
+sideMenu.Position = UDim2.new(0, 12, 0.5, 0)
+sideMenu.Size = UDim2.fromOffset(130, 190)
+sideMenu.BackgroundTransparency = 1
+sideMenu.Parent = gui
+local sideLayout = Instance.new("UIListLayout")
+sideLayout.Padding = UDim.new(0, 10)
+sideLayout.Parent = sideMenu
+for _, entry in ipairs({
+	{ "SHOP", "🛒 SHOP", Color3.fromRGB(60, 200, 90) },
+	{ "UPGRADES", "⚡ UPGRADES", Color3.fromRGB(40, 140, 255) },
+	{ "INDEX", "📖 INDEX", Color3.fromRGB(170, 80, 255) },
+}) do
+	local button = makeButton(sideMenu, entry[2], entry[3], { Size = UDim2.fromOffset(130, 52) })
+	button.Activated:Connect(function()
+		openTab(entry[1])
+	end)
+end
 
 -- ============================================================
 -- Invisible : tu te vois en fantôme, avec le temps restant et un bouton pour réapparaître
@@ -732,22 +929,22 @@ end)
 if RunService:IsStudio() then
 	local testEvent = ReplicatedStorage:WaitForChild("TestCommand", 10)
 	if testEvent then
-		local panel = Instance.new("Frame")
-		panel.AnchorPoint = Vector2.new(1, 0.5)
-		panel.Position = UDim2.new(1, -12, 0.5, 0)
-		panel.Size = UDim2.fromOffset(150, 300)
-		panel.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-		panel.BackgroundTransparency = 0.25
-		panel.Parent = gui
-		rounded(panel, 10)
+		local testPanel = Instance.new("Frame")
+		testPanel.AnchorPoint = Vector2.new(1, 0.5)
+		testPanel.Position = UDim2.new(1, -12, 0.5, 0)
+		testPanel.Size = UDim2.fromOffset(150, 300)
+		testPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+		testPanel.BackgroundTransparency = 0.25
+		testPanel.Parent = gui
+		rounded(testPanel, 10)
 		local layout = Instance.new("UIListLayout")
 		layout.Padding = UDim.new(0, 6)
 		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-		layout.Parent = panel
+		layout.Parent = testPanel
 		local padding = Instance.new("UIPadding")
 		padding.PaddingTop = UDim.new(0, 8)
-		padding.Parent = panel
-		textLabel(panel, { Size = UDim2.fromOffset(130, 18), Text = "TEST (Studio)", TextColor3 = Color3.fromRGB(80, 200, 255) })
+		padding.Parent = testPanel
+		textLabel(testPanel, { Size = UDim2.fromOffset(130, 18), Text = "TEST (Studio)", TextColor3 = Color3.fromRGB(80, 200, 255) })
 		local function addButton(text, command, amount)
 			local button = Instance.new("TextButton")
 			button.Size = UDim2.fromOffset(130, 28)
@@ -756,7 +953,7 @@ if RunService:IsStudio() then
 			button.TextScaled = true
 			button.TextColor3 = Color3.new(1, 1, 1)
 			button.Text = text
-			button.Parent = panel
+			button.Parent = testPanel
 			rounded(button, 6)
 			button.Activated:Connect(function()
 				testEvent:FireServer(command, amount)

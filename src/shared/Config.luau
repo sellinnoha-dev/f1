@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "9 - niveaux de garage et bots"
+Config.Version = "10 - ville et bots intelligents"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -65,7 +65,14 @@ Config.GarageTiers = {
 Config.BotsEnabled = true
 Config.BotsOnlyInStudio = true -- true = seulement quand tu testes dans Studio
 Config.BotCount = 2
-Config.BotMarketChance = 0.15 -- chance à chaque réflexion de vendre/acheter au marché
+Config.BotTradeCooldown = 120 -- secondes minimum entre deux ventes d'un même bot
+-- Personnalités : smartness = chance de faire le meilleur choix,
+-- patience = secondes qu'il accepte d'attendre pour économiser, trading = envie de vendre au marché
+Config.BotPersonalities = {
+	{ name = "Saver", smartness = 0.95, patience = 90, trading = 0.03 },
+	{ name = "Trader", smartness = 0.8, patience = 45, trading = 0.25 },
+	{ name = "Rusher", smartness = 0.6, patience = 10, trading = 0.08 },
+}
 
 -- Marché de voitures (centre de la carte)
 Config.MarketSlots = 8 -- nombre d'emplacements de vente

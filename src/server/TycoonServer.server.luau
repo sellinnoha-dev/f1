@@ -18,7 +18,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "18 - vol de voitures"
+local EXPECTED_CONFIG_VERSION = "19 - securite et objets"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -65,14 +65,32 @@ local function buildAutoCatalog()
 	for _, name in ipairs(Config.DropModelNames or {}) do
 		skip[name] = true
 	end
+	-- Voitures rangées directement dans Assets, ou dans des dossiers à l'intérieur
 	local models = {}
-	for _, child in ipairs(folder:GetChildren()) do
-		if not skip[child.Name] and (child:IsA("Model") or child:IsA("BasePart")) then
-			table.insert(models, { name = child.Name, score = detailScore(child) })
+	local function scan(container)
+		for _, child in ipairs(container:GetChildren()) do
+			if child:IsA("Folder") then
+				scan(child)
+			elseif not skip[child.Name] and (child:IsA("Model") or child:IsA("BasePart")) then
+				table.insert(models, { name = child.Name, score = detailScore(child), instance = child })
+			end
 		end
 	end
+	scan(folder)
+	print("[Tycoon] " .. #models .. " voiture(s) trouvée(s) dans ServerStorage > Assets")
 	if #models < 3 then
+		warn("[Tycoon] Il faut au moins 3 voitures dans Assets pour le classement automatique.")
 		return -- pas assez de voitures : on garde la liste de secours
+	end
+	-- Deux modèles avec le même nom : on les distingue
+	local seen = {}
+	for _, entry in ipairs(models) do
+		if seen[entry.name] then
+			seen[entry.name] += 1
+			entry.name ..= " #" .. seen[entry.name]
+		else
+			seen[entry.name] = 1
+		end
 	end
 	table.sort(models, function(a, b)
 		return a.score < b.score
@@ -116,6 +134,7 @@ local function buildAutoCatalog()
 			end
 			local car = {
 				id = "auto_" .. entry.name, name = name, rarity = rarity.id, model = entry.name,
+				instance = entry.instance,
 				style = (rarity.id == "common" or rarity.id == "rare") and "coupe" or "super",
 				price = math.floor(pricing.price * factor / 10) * 10,
 				income = math.floor(pricing.income * factor),
@@ -599,7 +618,7 @@ end
 
 -- Place une voiture de la Boîte à outils sur le podium. Renvoie false si impossible.
 local function placeAssetCar(item, model, base, noSpin)
-	local asset = getAsset(item.model)
+	local asset = (item.instance and item.instance.Parent and item.instance) or getAsset(item.model)
 	local clone = asset and cloneAsset(asset, item.style == "super" and 12 or 11)
 	if not clone then
 		return nil
@@ -826,6 +845,47 @@ local function renderSlots(plot)
 	end
 end
 
+-- Toit en verre : posé avec les murs. Au-dessus de l'étage VIP quand il est acheté
+-- (avec une ouverture pour l'escalier).
+local function updateRoof(plot)
+	plot.roof:ClearAllChildren()
+	local data = plot.owner and playerData[plot.owner]
+	if not data or not data.owned.walls then
+		return
+	end
+	local hasFloor = data.owned.floor2
+	local pieces = {
+		{ x = -19, z = 0, w = 42, l = 80, y = 16.25 }, -- côté machines
+		{ x = 9, z = 14, w = 14, l = 52, y = 16.25 }, -- milieu, devant l'escalier
+	}
+	if hasFloor then
+		table.insert(pieces, { x = 28, z = 0, w = 24, l = 80, y = 26.25 }) -- au-dessus de l'étage VIP
+	else
+		table.insert(pieces, { x = 9, z = -26, w = 14, l = 28, y = 16.25 })
+		table.insert(pieces, { x = 28, z = 0, w = 24, l = 80, y = 16.25 })
+	end
+	for _, piece in ipairs(pieces) do
+		makePart(plot.roof, {
+			Name = "RoofGlass", Size = Vector3.new(piece.w, 0.5, piece.l), CFrame = at(plot, piece.x, piece.y, piece.z),
+			Color = Color3.fromRGB(170, 210, 240), Material = Enum.Material.Glass, Transparency = 0.45,
+			CastShadow = false,
+		})
+		-- Cadre métallique autour de chaque vitre
+		for _, side in ipairs({ -1, 1 }) do
+			makePart(plot.roof, {
+				Name = "RoofFrame", Size = Vector3.new(piece.w, 0.7, 0.6),
+				CFrame = at(plot, piece.x, piece.y + 0.1, piece.z + side * (piece.l / 2 - 0.3)),
+				Color = COLOR_DARK, Material = Enum.Material.Metal,
+			})
+			makePart(plot.roof, {
+				Name = "RoofFrame", Size = Vector3.new(0.6, 0.7, piece.l),
+				CFrame = at(plot, piece.x + side * (piece.w / 2 - 0.3), piece.y + 0.1, piece.z),
+				Color = COLOR_DARK, Material = Enum.Material.Metal,
+			})
+		end
+	end
+end
+
 -- Vente rapide : la voiture disparaît, on récupère une partie de son prix
 function quickSell(plot, index)
 	local owner = plot.owner
@@ -968,6 +1028,9 @@ local function purchase(plot, owner, item)
 	if item.kind == "parking" or item.kind == "floor" then
 		renderSlots(plot) -- nouvelles places de parking
 	end
+	if item.kind == "walls" or item.kind == "floor" then
+		updateRoof(plot)
+	end
 	plot.buying = false
 	return true
 end
@@ -1046,6 +1109,7 @@ local function performRebirth(plot, owner)
 	plot.rebirthButton = nil
 	applyTheme(plot)
 	renderSlots(plot)
+	updateRoof(plot)
 	refreshButtons(plot)
 	plot.buying = false
 	local tier = getTier(owner)
@@ -1247,11 +1311,75 @@ local function createPlot(index)
 	end
 	plot.lockedUntil = 0
 	plot.lockReadyAt = 0
-	plot.lockPad = makePart(model, {
-		Name = "LockPad", Size = Vector3.new(5, 0.6, 5), CFrame = at(plot, 10, 0.3, 34),
-		Color = Color3.fromRGB(255, 40, 60), Material = Enum.Material.Neon,
+
+	-- Barrière laser à l'entrée (visible quand le garage est verrouillé)
+	plot.lasers = {}
+	for _, height in ipairs({ 1.5, 3.5, 5.5, 7.5, 9.5, 11.5 }) do
+		local beam = makePart(model, {
+			Name = "Laser", Size = Vector3.new(30, 0.2, 0.2), CFrame = at(plot, 0, height, 40),
+			Color = Color3.fromRGB(255, 30, 50), Material = Enum.Material.Neon,
+			Transparency = 1, CanCollide = false, CanQuery = false, CastShadow = false,
+		})
+		table.insert(plot.lasers, beam)
+		for _, x in ipairs({ -15, 15 }) do
+			makePart(model, {
+				Name = "LaserEmitter", Size = Vector3.new(0.8, 0.5, 0.8), CFrame = at(plot, x, height, 40),
+				Color = COLOR_DARK, Material = Enum.Material.Metal,
+			})
+		end
+	end
+	-- Gyrophares en haut des poteaux : verts = ouvert, rouges = verrouillé
+	plot.beacons = {}
+	for _, x in ipairs({ -15.5, 15.5 }) do
+		local beacon = makePart(model, {
+			Name = "Beacon", Shape = Enum.PartType.Ball, Size = Vector3.new(1.6, 1.6, 1.6),
+			CFrame = at(plot, x, 18, 40), Color = Color3.fromRGB(0, 255, 120), Material = Enum.Material.Neon,
+		})
+		local light = Instance.new("PointLight")
+		light.Range = 14
+		light.Color = beacon.Color
+		light.Parent = beacon
+		table.insert(plot.beacons, beacon)
+	end
+
+	-- Console de sécurité : socle, écran incliné et gros bouton (touche E)
+	makePart(model, {
+		Name = "ConsoleBase", Size = Vector3.new(3, 3.2, 2), CFrame = at(plot, 10, 1.6, 34),
+		Color = COLOR_DARK, Material = Enum.Material.DiamondPlate,
 	})
-	plot.lockLabel = createBillboard(plot.lockPad, "LOCK GARAGE", "Ready", 3, 8)
+	plot.consoleScreen = makePart(model, {
+		Name = "ConsoleScreen", Size = Vector3.new(2.6, 1.6, 0.2),
+		CFrame = at(plot, 10, 3.6, 34.6) * CFrame.Angles(math.rad(-25), 0, 0),
+		Color = Color3.fromRGB(0, 255, 120), Material = Enum.Material.Neon,
+	})
+	local lockButton = makePart(model, {
+		Name = "LockButton", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 1.2, 1.2),
+		CFrame = at(plot, 10, 3.4, 33.6) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = Color3.fromRGB(255, 30, 50), Material = Enum.Material.Neon,
+	})
+	plot.lockLabel = createBillboard(lockButton, "SECURITY", "Ready", 3, 8)
+	plot.lockPrompt = Instance.new("ProximityPrompt")
+	plot.lockPrompt.ActionText = "Lock Garage"
+	plot.lockPrompt.ObjectText = "Shield " .. Config.LockDuration .. "s"
+	plot.lockPrompt.HoldDuration = 0.5
+	plot.lockPrompt.MaxActivationDistance = 10
+	plot.lockPrompt.RequiresLineOfSight = false
+	plot.lockPrompt:SetAttribute("OwnerId", 0)
+	CollectionService:AddTag(plot.lockPrompt, "OwnerOnly")
+	plot.lockPrompt.Parent = lockButton
+
+	-- Grand panneau au-dessus de l'entrée : état du garage, visible de loin
+	local status = makePart(model, {
+		Name = "StatusAnchor", Size = Vector3.new(1, 1, 1), CFrame = at(plot, 0, 24, 40),
+		Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
+	})
+	plot.statusGui = createBillboard(status, "OPEN", "", 0, 22, Color3.fromRGB(0, 255, 120))
+	plot.statusGui.MaxDistance = 400
+
+	-- Toit en verre (avec les murs) : reconstruit selon ce qui est acheté
+	plot.roof = Instance.new("Folder")
+	plot.roof.Name = "Roof"
+	plot.roof.Parent = model
 
 	-- Route entre le centre de la carte et l'entrée du garage
 	local roadEnd = Config.PlotDistance - 30 -- s'arrête au bord du marché
@@ -1706,15 +1834,29 @@ local function pushOut(plot, character)
 	character:PivotTo(at(plot, 0, 4, 50))
 end
 
+-- Apparence du système de sécurité : bouclier, lasers, gyrophares, écran
+local function setSecurityVisual(plot, locked)
+	local color = locked and Color3.fromRGB(255, 30, 50) or Color3.fromRGB(0, 255, 120)
+	for _, part in ipairs(plot.shield) do
+		part.Transparency = locked and 0.45 or 1
+	end
+	for _, beam in ipairs(plot.lasers) do
+		beam.Transparency = locked and 0 or 1
+	end
+	for _, beacon in ipairs(plot.beacons) do
+		beacon.Color = color
+		beacon:FindFirstChildOfClass("PointLight").Color = color
+	end
+	plot.consoleScreen.Color = color
+end
+
 local function lockGarage(plot)
 	if not plot.owner or isLocked(plot) or os.clock() < plot.lockReadyAt then
 		return false
 	end
 	plot.lockedUntil = os.clock() + Config.LockDuration
 	plot.lockReadyAt = plot.lockedUntil + Config.LockCooldown
-	for _, part in ipairs(plot.shield) do
-		part.Transparency = 0.4
-	end
+	setSecurityVisual(plot, true)
 	-- Les intrus déjà à l'intérieur sont repoussés
 	for _, player in ipairs(Players:GetPlayers()) do
 		local root = player ~= plot.owner and getRoot(player)
@@ -1726,10 +1868,14 @@ local function lockGarage(plot)
 	return true
 end
 
+-- Crochet actif : le joueur peut traverser les boucliers quelques secondes
+local function hasLockpick(player)
+	return os.clock() < (player:GetAttribute("LockpickUntil") or 0)
+end
+
 for _, plot in ipairs(plots) do
-	plot.lockPad.Touched:Connect(function(hit)
-		local player = Players:GetPlayerFromCharacter(hit.Parent)
-		if player and player == plot.owner then
+	plot.lockPrompt.Triggered:Connect(function(player)
+		if player == plot.owner then
 			lockGarage(plot)
 		end
 	end)
@@ -1740,9 +1886,9 @@ for _, plot in ipairs(plots) do
 			end
 			local character = hit.Parent
 			local player = Players:GetPlayerFromCharacter(character)
-			if player and player ~= plot.owner then
+			if player and player ~= plot.owner and not hasLockpick(player) then
 				pushOut(plot, character)
-				notify(player, "This garage is locked!")
+				notify(player, "This garage is locked! (a Lockpick can open it)")
 			end
 		end)
 	end
@@ -1777,11 +1923,13 @@ local function attachCarriedCar(character, car)
 	return holder
 end
 
-local function setWalkSpeed(owner, speed)
+-- Vitesse : 16 normalement, plus lent en portant une voiture, + bonus des bottes
+local function applySpeed(owner)
 	local character = getCharacter(owner)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.WalkSpeed = speed
+		local base = carrying[owner] and Config.CarryWalkSpeed or 16
+		humanoid.WalkSpeed = base + (owner:GetAttribute("SpeedBonus") or 0)
 	end
 end
 
@@ -1794,7 +1942,7 @@ local function endCarry(thief)
 	if entry.model then
 		entry.model:Destroy()
 	end
-	setWalkSpeed(thief, 16)
+	applySpeed(thief)
 	return entry
 end
 
@@ -1810,7 +1958,7 @@ function tryStealCar(thief, plot, index)
 		notify(thief, "You are already carrying a car!")
 		return false
 	end
-	if isLocked(plot) then
+	if isLocked(plot) and not (thief:IsA("Player") and hasLockpick(thief)) then
 		notify(thief, "This garage is locked!")
 		return false
 	end
@@ -1828,7 +1976,7 @@ function tryStealCar(thief, plot, index)
 		model = character and attachCarriedCar(character, car),
 		deadline = os.clock() + Config.CarryTimeout,
 	}
-	setWalkSpeed(thief, Config.CarryWalkSpeed)
+	applySpeed(thief)
 	notify(thief, "You stole " .. car.name .. "! Bring it back to YOUR garage!")
 	notify(victim, displayName(thief) .. " is stealing your " .. car.name .. "! Catch them!")
 	return true
@@ -1862,33 +2010,232 @@ task.spawn(function()
 	end
 end)
 
--- Panneaux du bouclier : temps restant
-task.spawn(function()
-	while true do
-		task.wait(1)
-		local now = os.clock()
-		for _, plot in ipairs(plots) do
-			local subtitle
-			if now < plot.lockedUntil then
-				subtitle = "LOCKED " .. math.ceil(plot.lockedUntil - now) .. "s"
-			elseif now < plot.lockReadyAt then
-				subtitle = "Ready in " .. math.ceil(plot.lockReadyAt - now) .. "s"
-				if plot.shield[1].Transparency < 1 then
-					for _, part in ipairs(plot.shield) do
-						part.Transparency = 1
-					end
-				end
-			else
-				subtitle = "Ready (60s)"
-				if plot.shield[1].Transparency < 1 then
-					for _, part in ipairs(plot.shield) do
-						part.Transparency = 1
-					end
+-- ============================================================
+-- Boutique d'objets (au centre) : bottes de vitesse, batte, crochet
+-- ============================================================
+
+local function toolOwner(tool)
+	local parent = tool.Parent
+	if not parent then
+		return nil
+	end
+	return Players:GetPlayerFromCharacter(parent) or (parent.Parent and parent.Parent:IsA("Player") and parent.Parent) or nil
+end
+
+local function makeTool(gearId)
+	local gear = Config.Gear[gearId]
+	local tool = Instance.new("Tool")
+	tool.Name = gear.name
+	tool.ToolTip = gear.description
+	tool.CanBeDropped = false
+	tool:SetAttribute("Gear", gearId)
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Color = gear.color
+	if gearId == "bat" then
+		handle.Size = Vector3.new(0.4, 4, 0.4)
+		handle.Material = Enum.Material.Wood
+		tool.GripPos = Vector3.new(0, -1.5, 0)
+	elseif gearId == "coil" then
+		handle.Shape = Enum.PartType.Cylinder
+		handle.Size = Vector3.new(1.2, 1, 1)
+		handle.Material = Enum.Material.Neon
+	else
+		handle.Size = Vector3.new(0.3, 1.2, 0.3)
+		handle.Material = Enum.Material.Metal
+	end
+	handle.Parent = tool
+	CollectionService:AddTag(tool, "GearTool")
+	return tool
+end
+
+local function playerHasGear(player, gearId)
+	for _, container in ipairs({ player:FindFirstChild("Backpack"), player.Character, player:FindFirstChild("StarterGear") }) do
+		if container then
+			for _, child in ipairs(container:GetChildren()) do
+				if child:IsA("Tool") and child:GetAttribute("Gear") == gearId then
+					return true
 				end
 			end
-			local labels = plot.lockLabel:GetChildren() -- [1] titre, [2] sous-titre
-			if labels[2] and labels[2]:IsA("TextLabel") then
-				labels[2].Text = subtitle
+		end
+	end
+	return false
+end
+
+local function buyGear(player, gearId)
+	local gear = Config.Gear[gearId]
+	local cash = getCash(player)
+	if not gear or not cash then
+		return
+	end
+	if playerHasGear(player, gearId) then
+		notify(player, "You already have " .. gear.name .. "!")
+		return
+	end
+	if cash.Value < gear.price then
+		notify(player, "Not enough cash! " .. gear.name .. " costs $" .. formatMoney(gear.price))
+		return
+	end
+	cash.Value -= gear.price
+	makeTool(gearId).Parent = player:FindFirstChild("Backpack")
+	if not gear.consumable then
+		makeTool(gearId).Parent = player:FindFirstChild("StarterGear") -- gardé après la mort
+	end
+	notify(player, "You bought " .. gear.name .. "! " .. gear.description)
+end
+
+-- Tous les personnages (joueurs et bots) avec leur propriétaire
+local function allOwners()
+	local owners = Players:GetPlayers()
+	local botFolder = ServerStorage:FindFirstChild("Bots")
+	if botFolder then
+		for _, bot in ipairs(botFolder:GetChildren()) do
+			table.insert(owners, bot)
+		end
+	end
+	return owners
+end
+
+local function swingBat(player, tool)
+	if os.clock() < (tool:GetAttribute("ReadyAt") or 0) then
+		return
+	end
+	tool:SetAttribute("ReadyAt", os.clock() + Config.Gear.bat.cooldown)
+	local root = getRoot(player)
+	if not root then
+		return
+	end
+	for _, target in ipairs(allOwners()) do
+		local targetRoot = target ~= player and getRoot(target)
+		if targetRoot then
+			local offset = targetRoot.Position - root.Position
+			if offset.Magnitude < 9 and root.CFrame.LookVector:Dot(offset.Unit) > 0.2 then
+				-- Assommé : ne bouge plus quelques secondes et lâche la voiture volée
+				local humanoid = targetRoot.Parent:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					humanoid.WalkSpeed = 0
+					task.delay(Config.Gear.bat.stun, function()
+						applySpeed(target)
+					end)
+				end
+				local entry = carrying[target]
+				if entry then
+					endCarry(target)
+					giveCar(entry.victim, entry.car)
+					notify(entry.victim, displayName(player) .. " stopped the thief! " .. entry.car.name .. " is back.")
+				end
+				notify(target, displayName(player) .. " hit you with a bat!")
+			end
+		end
+	end
+end
+
+local function setupTool(tool)
+	local gearId = tool:GetAttribute("Gear")
+	tool.Equipped:Connect(function()
+		local player = toolOwner(tool)
+		if player and gearId == "coil" then
+			player:SetAttribute("SpeedBonus", Config.Gear.coil.bonus)
+			applySpeed(player)
+		end
+	end)
+	tool.Unequipped:Connect(function()
+		local player = Players:GetPlayerFromCharacter(tool.Parent) or toolOwner(tool)
+		if player and gearId == "coil" then
+			player:SetAttribute("SpeedBonus", 0)
+			applySpeed(player)
+		end
+	end)
+	tool.Activated:Connect(function()
+		local player = toolOwner(tool)
+		if not player then
+			return
+		end
+		if gearId == "bat" then
+			swingBat(player, tool)
+		elseif gearId == "lockpick" then
+			player:SetAttribute("LockpickUntil", os.clock() + Config.Gear.lockpick.duration)
+			notify(player, "Lockpick active for " .. Config.Gear.lockpick.duration .. "s: walk through locked shields!")
+			tool:Destroy()
+		end
+	end)
+end
+CollectionService:GetInstanceAddedSignal("GearTool"):Connect(setupTool)
+
+-- Comptoir de la boutique, au centre du marché
+local shopFolder = Instance.new("Folder")
+shopFolder.Name = "GearShop"
+shopFolder.Parent = workspace
+makePart(shopFolder, {
+	Name = "Counter", Size = Vector3.new(14, 3, 4), CFrame = CFrame.new(0, 1.8, 0),
+	Color = Color3.fromRGB(60, 40, 30), Material = Enum.Material.Wood,
+})
+makePart(shopFolder, {
+	Name = "CounterTop", Size = Vector3.new(14.4, 0.3, 4.4), CFrame = CFrame.new(0, 3.45, 0),
+	Color = COLOR_DARK, Material = Enum.Material.Marble,
+})
+local shopSign = makePart(shopFolder, {
+	Name = "ShopSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(0, 8, 0),
+	Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
+})
+createBillboard(shopSign, "GEAR SHOP", "Tools to steal and protect", 0, 14)
+local gearOrder = { "coil", "bat", "lockpick" }
+for i, gearId in ipairs(gearOrder) do
+	local gear = Config.Gear[gearId]
+	local stand = makePart(shopFolder, {
+		Name = "Gear_" .. gearId, Size = Vector3.new(1.4, 1.4, 1.4), CFrame = CFrame.new((i - 2) * 4.5, 4.5, 0),
+		Color = gear.color, Material = Enum.Material.Neon, Shape = Enum.PartType.Ball,
+	})
+	createBillboard(stand, gear.name, "$" .. formatMoney(gear.price), 2.5, 6)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Buy $" .. formatMoney(gear.price)
+	prompt.ObjectText = gear.name
+	prompt.HoldDuration = 0.3
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = stand
+	prompt.Triggered:Connect(function(player)
+		buyGear(player, gearId)
+	end)
+end
+
+-- Panneaux de sécurité : compte à rebours au-dessus de chaque garage et sur la console
+local function setLabels(gui, title, subtitle, color)
+	local labels = gui:GetChildren() -- [1] titre, [2] sous-titre
+	if labels[1] and labels[1]:IsA("TextLabel") then
+		labels[1].Text = title
+		if color then
+			labels[1].TextColor3 = color
+		end
+	end
+	if labels[2] and labels[2]:IsA("TextLabel") then
+		labels[2].Text = subtitle
+	end
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		local now = os.clock()
+		for _, plot in ipairs(plots) do
+			if not plot.owner then
+				setLabels(plot.statusGui, "", "")
+			elseif now < plot.lockedUntil then
+				local left = math.ceil(plot.lockedUntil - now)
+				setLabels(plot.statusGui, "LOCKED " .. left .. "s", "Opens soon...", Color3.fromRGB(255, 50, 60))
+				setLabels(plot.lockLabel, "LOCKED", left .. "s left")
+			else
+				if plot.shield[1].Transparency < 1 then
+					setSecurityVisual(plot, false)
+				end
+				setLabels(plot.statusGui, "OPEN", "Cars can be stolen!", Color3.fromRGB(0, 255, 120))
+				if now < plot.lockReadyAt then
+					setLabels(plot.lockLabel, "SECURITY", "Ready in " .. math.ceil(plot.lockReadyAt - now) .. "s")
+				else
+					setLabels(plot.lockLabel, "SECURITY", "Press E to lock")
+				end
 			end
 		end
 	end
@@ -2076,8 +2423,10 @@ local function assignPlot(plot, player)
 			buildItem(plot, item)
 		end
 	end
+	plot.lockPrompt:SetAttribute("OwnerId", player:IsA("Player") and player.UserId or -1)
 	applyTheme(plot)
 	renderSlots(plot)
+	updateRoof(plot)
 	refreshButtons(plot)
 	createGamePassPad(plot)
 end
@@ -2102,9 +2451,9 @@ local function releasePlot(plot)
 	plot.signLabel.Text = "Free Garage"
 	plot.lockedUntil = 0
 	plot.lockReadyAt = 0
-	for _, part in ipairs(plot.shield) do
-		part.Transparency = 1
-	end
+	plot.lockPrompt:SetAttribute("OwnerId", 0)
+	setSecurityVisual(plot, false)
+	plot.roof:ClearAllChildren()
 	applyTheme(plot)
 end
 
@@ -2246,6 +2595,9 @@ local function onPlayerAdded(player)
 	end
 	assignPlot(plot, player)
 	print("[Tycoon] " .. player.Name .. " -> garage " .. plot.index)
+	if RunService:IsStudio() then
+		notify(player, #Config.Cars .. " cars on the delivery belt (from ServerStorage > Assets)")
+	end
 
 	-- Quand le perso meurt, il réapparaît dans son garage après quelques secondes
 	player.CharacterAdded:Connect(function(character)
@@ -2597,13 +2949,32 @@ local function botBrain(bot, state)
 			if not freeSlotIndex(data) and worstSlot then
 				quickSell(plot, worstSlot) -- fait de la place pour une meilleure voiture
 			end
+			-- Le bot marche jusqu'à la voiture avant de l'acheter
+			local function closeTo(position)
+				local root = getRoot(bot)
+				return root and (root.Position - position).Magnitude < 18
+			end
 			if choice.kind == "belt" then
 				local rarity = raritiesById[choice.item.rarity]
 				setThought(state, reason or ("A " .. rarity.name .. " " .. choice.item.name .. "? I want it!"))
-				buyFromBelt(choice.entry, bot)
+				local entry = choice.entry
+				for _ = 1, 3 do -- la voiture avance : il la rattrape
+					if entry.removed or closeTo(entry.root.Position) then
+						break
+					end
+					botWalkTo(state, entry.root.Position + entry.root.CFrame.LookVector * 8)
+				end
+				if not entry.removed and closeTo(entry.root.Position) then
+					buyFromBelt(entry, bot)
+				else
+					setThought(state, "Too late for the " .. choice.item.name .. "...")
+				end
 			else
 				setThought(state, reason or ("Cheap " .. choice.item.name .. " at the market!"))
-				buyCar(choice.slot, bot)
+				botWalkTo(state, choice.slot.podium.Position + Vector3.new(0, 3, 0))
+				if closeTo(choice.slot.podium.Position) then
+					buyCar(choice.slot, bot)
+				end
 			end
 		elseif choice.kind == "rebirth" then
 			setThought(state, "Rebirth time! My garage will level up!")

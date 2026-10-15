@@ -94,7 +94,10 @@ Noms des modèles à ranger dans `ServerStorage > Assets` (2 par rareté) :
 
 - Dans le garage d'un autre joueur, maintiens **E** (STEAL) sur une voiture : elle passe au-dessus de ta tête et tu es ralenti.
 - Ramène-la dans **ton** garage pour la garder. Si le propriétaire te touche, elle lui revient. Délai max : 90 s.
-- Bouton rouge **LOCK GARAGE** : bouclier de 60 s qui repousse les voleurs, puis 30 s d'attente.
+- **Console de sécurité** (touche E, près de l'entrée) : bouclier + lasers pendant 60 s, puis 30 s d'attente.
+  Un grand panneau au-dessus de chaque garage affiche OPEN ou LOCKED avec le compte à rebours.
+- **Boutique d'objets** au centre : Speed Boots (+8 vitesse), Bat (assomme un voleur et lui fait lâcher la voiture),
+  Lockpick (traverser un bouclier pendant 15 s, usage unique).
 - Les bots volent, verrouillent et poursuivent les voleurs selon leur personnalité.
 
 ## Utiliser de vrais modèles de la Boîte à outils

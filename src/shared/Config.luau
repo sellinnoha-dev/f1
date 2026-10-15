@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "18 - vol de voitures"
+Config.Version = "19 - securite et objets"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -211,6 +211,16 @@ Config.CarryWalkSpeed = 10 -- vitesse du voleur qui porte une voiture (normal = 
 Config.CarryTimeout = 90 -- secondes max pour ramener la voiture, sinon elle revient
 Config.LockDuration = 60 -- durée du bouclier du garage
 Config.LockCooldown = 30 -- attente avant de pouvoir le réactiver
+
+-- Objets de la boutique (au centre de la carte)
+Config.Gear = {
+	coil = { name = "Speed Boots", price = 5000, bonus = 8, color = Color3.fromRGB(0, 200, 255),
+		description = "Equip to run faster (+8 speed)." },
+	bat = { name = "Bat", price = 15000, stun = 2.5, cooldown = 3, color = Color3.fromRGB(150, 100, 60),
+		description = "Hit a thief: stunned, and they drop the stolen car." },
+	lockpick = { name = "Lockpick", price = 50000, duration = 15, consumable = true, color = Color3.fromRGB(255, 200, 0),
+		description = "Use it to walk through a locked garage shield for 15s (one use)." },
+}
 
 -- Vente rapide d'une voiture de son garage (touche F) : % du prix récupéré
 Config.QuickSellRatio = 0.5

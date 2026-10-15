@@ -8,6 +8,7 @@
 
 local HttpService = game:GetService("HttpService")
 local BASE = "https://raw.githubusercontent.com/sellinnoha-dev/f1/main/src/"
+local API = "https://api.github.com/repos/sellinnoha-dev/f1/contents/src/"
 
 -- { fichier sur GitHub, service, nom dans Studio, type de script }
 local FILES = {
@@ -18,13 +19,27 @@ local FILES = {
 	{ "client/CarSpinner.client.luau", game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"), "CarSpinner", "LocalScript" },
 }
 
-local stamp = tostring(os.time()) -- évite de récupérer une vieille version en cache
+local stamp = tostring(os.time())
+
+-- L'API GitHub donne toujours la dernière version (raw.githubusercontent garde
+-- parfois une vieille copie en cache quelques minutes). En secours, on utilise raw.
+local function fetch(path)
+	local ok, response = pcall(function()
+		return HttpService:RequestAsync({
+			Url = API .. path .. "?ref=main&v=" .. stamp,
+			Method = "GET",
+			Headers = { Accept = "application/vnd.github.raw" },
+		})
+	end)
+	if ok and response.Success then
+		return response.Body
+	end
+	return HttpService:GetAsync(BASE .. path .. "?v=" .. stamp, true)
+end
 local updated = 0
 for _, file in ipairs(FILES) do
 	local path, parent, name, className = file[1], file[2], file[3], file[4]
-	local ok, source = pcall(function()
-		return HttpService:GetAsync(BASE .. path .. "?v=" .. stamp, true)
-	end)
+	local ok, source = pcall(fetch, path)
 	if ok then
 		local script = parent:FindFirstChild(name)
 		if not script or script.ClassName ~= className then
@@ -42,4 +57,7 @@ for _, file in ipairs(FILES) do
 	end
 end
 
-print(string.format("[Garage Tycoon] Mise à jour terminée : %d/%d scripts à jour. Fais Ctrl+S puis F5.", updated, #FILES))
+local config = game:GetService("ReplicatedStorage"):FindFirstChild("Config")
+local version = config and config.Source:match('Config.Version = "([^"]*)"') or "?"
+print(string.format("[Garage Tycoon] Mise à jour terminée : %d/%d scripts à jour (version %s). Fais Ctrl+S puis F5.",
+	updated, #FILES, version))

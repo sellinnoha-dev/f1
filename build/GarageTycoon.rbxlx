@@ -26,6 +26,9 @@
 
 local Config = {}
 
+-- Version du jeu, affichée dans la Sortie au lancement
+Config.Version = "7 - etage VIP"
+
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
 
@@ -221,6 +224,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
+print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 
 -- On fait apparaître les persos nous-mêmes, directement dans leur garage
 Players.CharacterAutoLoads = false

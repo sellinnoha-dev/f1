@@ -16,6 +16,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
+print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 
 -- On fait apparaître les persos nous-mêmes, directement dans leur garage
 Players.CharacterAutoLoads = false

@@ -7,7 +7,7 @@
 local Config = {}
 
 -- Version du jeu, affichée dans la Sortie au lancement
-Config.Version = "19 - securite et objets"
+Config.Version = "20 - restauration et camion"
 
 -- Argent donné à un nouveau joueur
 Config.StartingCash = 0
@@ -99,7 +99,7 @@ Config.CashX2GamePassId = 0
 Config.GamePassPad = Vector3.new(-10, 0, 30)
 
 -- ============================================================
--- RARETÉS : plus c'est rare, moins ça apparaît sur le tapis (weight = chance)
+-- RARETÉS : plus c'est rare, moins ça apparaît dans le camion (weight = chance)
 -- ============================================================
 Config.Rarities = {
 	{ id = "common", name = "COMMON", color = Color3.fromRGB(200, 200, 200), weight = 50 },
@@ -198,12 +198,31 @@ Config.CarSlots = {
 	{ position = Vector3.new(28, 16, -30), requires = "floor2" },
 }
 
--- Tapis de livraison (anneau autour du marché) : une nouvelle voiture toutes les X secondes
-Config.DeliveryInterval = 3
-Config.DeliveryLoopTime = 50 -- secondes pour faire le tour (après, la voiture repart)
-Config.DeliveryRadius = 44
-Config.DeliveryMaxCars = 14
-Config.DeliveryPrefill = 8 -- voitures déjà présentes au lancement (dont une Legendary)
+-- ============================================================
+-- RESTAURATION : un camion livre des ÉPAVES sur le parking de livraison (au centre).
+-- On achète l'épave pas cher, on la ramène au garage, puis on la répare avec les
+-- pièces fabriquées par les machines (chaque pièce qui arrive au collecteur = +1 pièce).
+-- Une voiture restaurée rapporte de l'argent chaque seconde et vaut son prix complet.
+-- ============================================================
+Config.WreckPriceRatio = 0.3 -- une épave coûte 30 % du prix de la voiture restaurée
+
+-- Pièces nécessaires pour restaurer une voiture, selon sa rareté
+Config.RepairParts = {
+	common = { bolt = 15 },
+	rare = { bolt = 25, tire = 15 },
+	epic = { tire = 30, engine = 15 },
+	legendary = { engine = 40, panel = 20 },
+	mythic = { panel = 60, rim = 30 },
+	extreme = { engine = 80, rim = 120 },
+}
+Config.PartNames = { bolt = "Bolts", tire = "Tires", engine = "Engines", panel = "Panels", rim = "Rims" }
+
+-- Camion de livraison : il arrive par l'autoroute, dépose ses épaves sur le parking, puis repart
+Config.TruckInterval = 75 -- secondes entre deux livraisons
+Config.TruckCars = 4 -- épaves déposées à chaque livraison
+Config.LotSpots = 8 -- places sur le parking de livraison
+Config.LotStay = 150 -- secondes avant qu'une épave invendue reparte avec le camion
+Config.RoadAngle = 22.5 -- direction de l'autoroute (en degrés), entre deux garages
 
 -- Vol de voitures
 Config.StealHoldTime = 2.5 -- secondes à maintenir E pour voler
@@ -211,16 +230,6 @@ Config.CarryWalkSpeed = 10 -- vitesse du voleur qui porte une voiture (normal = 
 Config.CarryTimeout = 90 -- secondes max pour ramener la voiture, sinon elle revient
 Config.LockDuration = 60 -- durée du bouclier du garage
 Config.LockCooldown = 30 -- attente avant de pouvoir le réactiver
-
--- Objets de la boutique (au centre de la carte)
-Config.Gear = {
-	coil = { name = "Speed Boots", price = 5000, bonus = 8, color = Color3.fromRGB(0, 200, 255),
-		description = "Equip to run faster (+8 speed)." },
-	bat = { name = "Bat", price = 15000, stun = 2.5, cooldown = 3, color = Color3.fromRGB(150, 100, 60),
-		description = "Hit a thief: stunned, and they drop the stolen car." },
-	lockpick = { name = "Lockpick", price = 50000, duration = 15, consumable = true, color = Color3.fromRGB(255, 200, 0),
-		description = "Use it to walk through a locked garage shield for 15s (one use)." },
-}
 
 -- Vente rapide d'une voiture de son garage (touche F) : % du prix récupéré
 Config.QuickSellRatio = 0.5
@@ -232,7 +241,7 @@ Config.RebirthKeepSlots = 3
 --   kind     : "dropper" (fabrique des pièces), "upgrader" (multiplie la valeur),
 --              "walls" (décor), "parking" (places en plus), "floor" (étage VIP + 5 places),
 --              "perk" (bureau qui donne un bonus permanent)
---   (les voitures ne sont plus dans la boutique : elles arrivent sur le tapis de livraison)
+--   (les voitures ne sont plus dans la boutique : le camion livre des épaves à restaurer)
 --   requires : l'objet à posséder avant que le bouton apparaisse
 --   value    : argent rapporté par pièce (dropper)
 --   interval : secondes entre deux pièces (dropper)

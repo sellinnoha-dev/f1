@@ -71,13 +71,22 @@ Pas besoin de code : sur le Creator Dashboard, ouvre ton expérience → **Monet
 (gratuits, ou payants en Robux par mois). Les joueurs peuvent alors créer un serveur privé et y inviter leurs amis ;
 les autres jouent en public. Pense aussi à régler le **nombre max de joueurs à 8** (il y a 8 garages).
 
-## Raretés et tapis de livraison
+## Restauration : le cœur du jeu
 
-- Les voitures ne s'achètent plus à la boutique : elles défilent sur le **tapis de livraison** (anneau autour du marché),
-  avec une rareté aléatoire : COMMON, RARE, EPIC, LEGENDARY, MYTHIC et **EXTREME LEGENDARY** (1 % de chance).
-- Maintiens **E** sur une voiture du tapis pour l'acheter. Elle va sur une place libre de ton garage.
-- Sur ta place : **E** = vendre au marché, **F** = vente rapide (50 % du prix).
-- Places : 3 au départ, +2 avec « Extra Parking », +5 avec l'étage VIP. Au rebirth, tu gardes les voitures des 3 premières places.
+1. **Le camion** arrive par l'autoroute (au bord de la carte), dépose des **épaves** sur le parking de livraison
+   (près du centre), puis repart. Un panneau affiche le compte à rebours jusqu'au prochain camion.
+2. Maintiens **E** sur une épave pour l'acheter : elle coûte **30 %** du prix de la voiture restaurée.
+   Elle va sur une place libre de ton garage, toute rouillée. Les épaves invendues repartent avec un prochain camion.
+3. Tes machines fabriquent des **pièces** : chaque pièce qui arrive au collecteur = de l'argent **et** +1 pièce en stock
+   (Bolts, Tires, Engines, Panels, Rims), affiché en bas à gauche.
+4. Sur ta place, maintiens **E** (« Repair ») : les pièces de ton stock sont posées sur la voiture. Quand il ne manque plus rien,
+   elle est **restaurée** : elle brille, rapporte de l'argent chaque seconde et vaut son prix complet.
+5. Plus la voiture est rare, plus elle demande de pièces de haut niveau (une EXTREME demande des Engines et des Rims).
+
+Raretés : COMMON, RARE, EPIC, LEGENDARY, MYTHIC et **EXTREME LEGENDARY** (1 % de chance par épave).
+Sur ta place : **E** = vendre au marché (voiture restaurée) ou réparer (épave), **F** = vente rapide (50 % de sa valeur).
+Places : 3 au départ, +2 avec « Extra Parking », +5 avec l'étage VIP. Au rebirth, tu gardes les voitures des 3 premières places.
+Réglages dans `Config.luau` : `WreckPriceRatio`, `RepairParts`, `TruckInterval`, `TruckCars`, `LotSpots`, `LotStay`.
 
 Noms des modèles à ranger dans `ServerStorage > Assets` (2 par rareté) :
 
@@ -96,8 +105,7 @@ Noms des modèles à ranger dans `ServerStorage > Assets` (2 par rareté) :
 - Ramène-la dans **ton** garage pour la garder. Si le propriétaire te touche, elle lui revient. Délai max : 90 s.
 - **Console de sécurité** (touche E, près de l'entrée) : bouclier + lasers pendant 60 s, puis 30 s d'attente.
   Un grand panneau au-dessus de chaque garage affiche OPEN ou LOCKED avec le compte à rebours.
-- **Boutique d'objets** au centre : Speed Boots (+8 vitesse), Bat (assomme un voleur et lui fait lâcher la voiture),
-  Lockpick (traverser un bouclier pendant 15 s, usage unique).
+- Une épave volée reste une épave : le voleur doit la réparer lui-même.
 - Les bots volent, verrouillent et poursuivent les voleurs selon leur personnalité.
 
 ## Utiliser de vrais modèles de la Boîte à outils

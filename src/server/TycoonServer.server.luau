@@ -18,7 +18,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 local formatMoney = require(ReplicatedStorage:WaitForChild("FormatMoney"))
 -- Le script serveur et Config doivent venir de la même mise à jour
-local EXPECTED_CONFIG_VERSION = "19 - securite et objets"
+local EXPECTED_CONFIG_VERSION = "20 - restauration et camion"
 print("[Tycoon] Garage Tycoon version " .. tostring(Config.Version))
 if Config.Version ~= EXPECTED_CONFIG_VERSION then
 	warn("[Tycoon] ATTENTION : Config n'est pas à jour (" .. tostring(Config.Version) .. " au lieu de "
@@ -477,6 +477,7 @@ local function spawnDrop(plot, item)
 
 	drop.Name = "Drop"
 	drop:SetAttribute("Value", item.value)
+	drop:SetAttribute("Part", item.drop)
 	drop:SetAttribute("Plot", plot.index)
 	drop.Parent = plot.drops
 	-- Le serveur gère la physique : un tricheur ne peut pas déplacer les pièces
@@ -499,6 +500,13 @@ local function onCollect(plot, hit)
 	if cash then
 		local multiplier = getMultiplier(owner)
 		cash.Value += math.floor(value * multiplier + 0.5)
+	end
+	-- Chaque pièce arrivée = +1 pièce en stock pour réparer les épaves
+	local partId = drop:GetAttribute("Part")
+	local data = owner and playerData[owner]
+	if partId and data and data.parts then
+		data.parts[partId] = (data.parts[partId] or 0) + 1
+		owner:SetAttribute("Parts_" .. partId, data.parts[partId])
 	end
 end
 
@@ -691,6 +699,8 @@ local function placeCar(item, model, base, noSpin)
 	return car
 end
 
+local makeRusty -- défini plus bas
+
 -- Paillettes sur les voitures des raretés les plus hautes
 local function decorateRarity(car, carDef)
 	local rarity = raritiesById[carDef.rarity]
@@ -698,6 +708,25 @@ local function decorateRarity(car, carDef)
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = rarity.color
 		sparkles.Parent = car.PrimaryPart
+	end
+end
+
+-- Aspect d'épave : carrosserie rouillée et terne
+local RUST = Color3.fromRGB(120, 72, 40)
+function makeRusty(car)
+	if not car then
+		return
+	end
+	for _, descendant in ipairs(car:GetDescendants()) do
+		if descendant:IsA("SurfaceAppearance") or descendant:IsA("Texture") then
+			descendant:Destroy()
+		elseif descendant:IsA("BasePart") and descendant.Transparency < 0.5 then
+			descendant.Color = descendant.Color:Lerp(RUST, 0.65)
+			descendant.Material = Enum.Material.CorrodedMetal
+			if descendant:IsA("MeshPart") then
+				descendant.TextureID = ""
+			end
+		end
 	end
 end
 
@@ -727,6 +756,60 @@ local listCar -- défini plus bas, dans la partie "Marché"
 -- Places de parking du garage : chaque voiture possédée y est exposée
 -- ============================================================
 
+-- ============================================================
+-- Voitures possédées : { id = voiture, needs = pièces manquantes } (needs = nil : réparée)
+-- ============================================================
+
+local PART_IDS = { "bolt", "tire", "engine", "panel", "rim" }
+
+local function carDef(entry)
+	return entry and carsById[entry.id]
+end
+
+local function isWreck(entry)
+	return entry ~= nil and entry.needs ~= nil
+end
+
+-- Une épave ne rapporte rien : il faut la réparer
+local function carIncome(entry)
+	local def = carDef(entry)
+	return (def and not isWreck(entry)) and def.income or 0
+end
+
+-- Valeur d'une voiture : plein prix réparée, prix d'épave sinon
+local function carValue(entry)
+	local def = carDef(entry)
+	if not def then
+		return 0
+	end
+	return isWreck(entry) and math.floor(def.price * Config.WreckPriceRatio) or def.price
+end
+
+local function newWreck(def)
+	return { id = def.id, needs = table.clone(Config.RepairParts[def.rarity] or {}) }
+end
+
+local function needsText(needs)
+	local parts = {}
+	for _, partId in ipairs(PART_IDS) do
+		local amount = needs[partId] or 0
+		if amount > 0 then
+			table.insert(parts, amount .. " " .. Config.PartNames[partId])
+		end
+	end
+	return table.concat(parts, " · ")
+end
+
+-- Stock de pièces d'un propriétaire (copié en attributs pour l'affichage du joueur)
+local function addParts(owner, partId, amount)
+	local data = playerData[owner]
+	if not data then
+		return
+	end
+	data.parts[partId] = (data.parts[partId] or 0) + amount
+	owner:SetAttribute("Parts_" .. partId, data.parts[partId])
+end
+
 local function slotUnlocked(data, slotDef)
 	return slotDef.requires == nil or data.owned[slotDef.requires] == true
 end
@@ -744,16 +827,17 @@ end
 -- Voiture qui rapporte le moins (pour la remplacer par une meilleure)
 local function worstCarSlot(data)
 	local worstIndex, worstIncome = nil, math.huge
-	for index, carId in pairs(data.cars) do
-		local car = carsById[carId]
-		if car and car.income < worstIncome then
-			worstIndex, worstIncome = index, car.income
+	for index, entry in pairs(data.cars) do
+		local value = carIncome(entry) + carValue(entry) / 1000
+		if value < worstIncome then
+			worstIndex, worstIncome = index, value
 		end
 	end
 	return worstIndex, worstIncome
 end
 
 local quickSell -- défini juste après
+local repairCar -- défini juste après
 local tryStealCar -- défini dans la partie "Vol de voitures"
 
 -- Les touches E/F ne s'affichent que pour les bonnes personnes (script PromptFilter côté joueur) :
@@ -781,31 +865,54 @@ local function renderSlot(plot, index)
 	model.Parent = plot.carSlots
 	local p = slotDef.position
 	local podium, top = makePodium(model, at(plot, p.X, p.Y, p.Z), getTier(owner).trimColor)
-	local car = data.cars[index] and carsById[data.cars[index]]
+	local entry = data.cars[index]
+	local car = carDef(entry)
 	if not car then
-		createBillboard(podium, "EMPTY SPOT", "Buy cars on the delivery belt", 7, 10)
+		createBillboard(podium, "EMPTY SPOT", "Buy wrecks at the car lot", 7, 10)
 		return
 	end
 
 	local rarity = raritiesById[car.rarity]
-	createBillboard(podium, car.name, rarity.name .. "  ·  +$" .. formatMoney(car.income) .. "/s", 7, 11, rarity.color)
+	local wreck = isWreck(entry)
+	if wreck then
+		createBillboard(podium, "WRECK: " .. car.name, "Needs " .. needsText(entry.needs), 7, 13, rarity.color)
+	else
+		createBillboard(podium, car.name, rarity.name .. "  ·  +$" .. formatMoney(car.income) .. "/s", 7, 11, rarity.color)
+	end
 
-	local sellPrompt = Instance.new("ProximityPrompt")
-	sellPrompt.ActionText = "Sell at Market"
-	sellPrompt.ObjectText = "Get $" .. formatMoney(math.floor(car.price * Config.MarketSellerBonus))
-	sellPrompt.HoldDuration = 1
-	sellPrompt.MaxActivationDistance = 12
-	sellPrompt.RequiresLineOfSight = false
-	tagPrompt(sellPrompt, "OwnerOnly", owner)
-	sellPrompt.Parent = podium
-	sellPrompt.Triggered:Connect(function(player)
-		if player == plot.owner then
-			listCar(plot, index)
-		end
-	end)
+	if wreck then
+		-- Épave : la touche E sert à la réparer avec les pièces du stock
+		local repairPrompt = Instance.new("ProximityPrompt")
+		repairPrompt.ActionText = "Repair"
+		repairPrompt.ObjectText = "Uses your parts"
+		repairPrompt.HoldDuration = 0.5
+		repairPrompt.MaxActivationDistance = 12
+		repairPrompt.RequiresLineOfSight = false
+		tagPrompt(repairPrompt, "OwnerOnly", owner)
+		repairPrompt.Parent = podium
+		repairPrompt.Triggered:Connect(function(player)
+			if player == plot.owner then
+				repairCar(plot, index)
+			end
+		end)
+	else
+		local sellPrompt = Instance.new("ProximityPrompt")
+		sellPrompt.ActionText = "Sell at Market"
+		sellPrompt.ObjectText = "Get $" .. formatMoney(math.floor(carValue(entry) * Config.MarketSellerBonus))
+		sellPrompt.HoldDuration = 1
+		sellPrompt.MaxActivationDistance = 12
+		sellPrompt.RequiresLineOfSight = false
+		tagPrompt(sellPrompt, "OwnerOnly", owner)
+		sellPrompt.Parent = podium
+		sellPrompt.Triggered:Connect(function(player)
+			if player == plot.owner then
+				listCar(plot, index)
+			end
+		end)
+	end
 
 	local quickPrompt = Instance.new("ProximityPrompt")
-	quickPrompt.ActionText = "Quick Sell $" .. formatMoney(math.floor(car.price * Config.QuickSellRatio))
+	quickPrompt.ActionText = "Quick Sell $" .. formatMoney(math.floor(carValue(entry) * Config.QuickSellRatio))
 	quickPrompt.ObjectText = car.name
 	quickPrompt.KeyboardKeyCode = Enum.KeyCode.F
 	quickPrompt.HoldDuration = 1.5
@@ -835,7 +942,12 @@ local function renderSlot(plot, index)
 		end
 	end)
 
-	decorateRarity(placeCar(car, model, top), car)
+	local carModel = placeCar(car, model, top)
+	if wreck then
+		makeRusty(carModel)
+	else
+		decorateRarity(carModel, car)
+	end
 end
 
 local function renderSlots(plot)
@@ -891,15 +1003,62 @@ function quickSell(plot, index)
 	local owner = plot.owner
 	local data = owner and playerData[owner]
 	local cash = owner and getCash(owner)
-	local car = data and data.cars[index] and carsById[data.cars[index]]
+	local entry = data and data.cars[index]
+	local car = carDef(entry)
 	if not car or not cash then
 		return
 	end
 	data.cars[index] = nil
-	local earned = math.floor(car.price * Config.QuickSellRatio)
+	local earned = math.floor(carValue(entry) * Config.QuickSellRatio)
 	cash.Value += earned
 	renderSlot(plot, index)
 	notify(owner, "Sold " .. car.name .. " for $" .. formatMoney(earned))
+end
+
+-- Réparation : utilise les pièces du stock. Quand il ne manque plus rien, la voiture est réparée.
+function repairCar(plot, index)
+	local owner = plot.owner
+	local data = owner and playerData[owner]
+	local entry = data and data.cars[index]
+	local car = carDef(entry)
+	if not car or not isWreck(entry) then
+		return false
+	end
+	local used = 0
+	for _, partId in ipairs(PART_IDS) do
+		local need = entry.needs[partId] or 0
+		local take = math.min(need, data.parts[partId] or 0)
+		if take > 0 then
+			entry.needs[partId] = need - take
+			addParts(owner, partId, -take)
+			used += take
+		end
+	end
+	local done = true
+	for _, partId in ipairs(PART_IDS) do
+		if (entry.needs[partId] or 0) > 0 then
+			done = false
+		end
+	end
+	if done then
+		entry.needs = nil
+		notify(owner, car.name .. " is fully restored! +$" .. formatMoney(car.income) .. "/s")
+	elseif used > 0 then
+		notify(owner, "Repairing " .. car.name .. "... still needs " .. needsText(entry.needs))
+	else
+		notify(owner, "No parts! Your factory makes them: " .. needsText(entry.needs))
+	end
+	renderSlot(plot, index)
+	if done then
+		local slotModel = plot.carSlots:FindFirstChild("Slot" .. index)
+		local root = slotModel and slotModel:FindFirstChild("Car", true)
+		if root and root:IsA("Model") and root.PrimaryPart then
+			local sparkles = Instance.new("Sparkles")
+			sparkles.Parent = root.PrimaryPart
+			Debris:AddItem(sparkles, 4)
+		end
+	end
+	return done
 end
 
 -- Étage VIP : dalle sur la moitié droite du garage, escalier, rambardes et murs
@@ -1444,8 +1603,8 @@ local function setSlotLabel(slot, title, subtitle)
 	slot.label = createBillboard(slot.podium, title, subtitle, 7, 10)
 end
 
-local function buyPrice(car)
-	return math.floor(car.price * Config.MarketBuyerPrice)
+local function buyPrice(entry)
+	return math.floor(carValue(entry) * Config.MarketBuyerPrice)
 end
 
 local function clearSlot(slot)
@@ -1456,14 +1615,14 @@ local function clearSlot(slot)
 end
 
 -- Donne une voiture à quelqu'un : place libre, sinon on le rembourse
-local function giveCar(owner, car)
+local function giveCar(owner, entry)
 	local data = playerData[owner]
 	if not data then
 		return false
 	end
 	local index = freeSlotIndex(data)
 	if index then
-		data.cars[index] = car.id
+		data.cars[index] = entry
 		if data.plot then
 			renderSlot(data.plot, index)
 		end
@@ -1471,7 +1630,7 @@ local function giveCar(owner, car)
 	end
 	local cash = getCash(owner)
 	if cash then
-		cash.Value += car.price
+		cash.Value += carValue(entry)
 	end
 	return false
 end
@@ -1480,11 +1639,12 @@ end
 local function returnCar(slot)
 	local listing = slot.listing
 	clearSlot(slot)
-	local seller, car = listing.seller, listing.car
-	if giveCar(seller, car) then
+	local seller, entry = listing.seller, listing.entry
+	local car = carDef(entry)
+	if giveCar(seller, entry) then
 		notify(seller, car.name .. " was not sold and is back in your garage.")
 	else
-		notify(seller, car.name .. " was not sold. Your garage is full: refunded $" .. formatMoney(car.price))
+		notify(seller, car.name .. " was not sold. Your garage is full: refunded $" .. formatMoney(carValue(entry)))
 	end
 end
 
@@ -1493,7 +1653,8 @@ local function buyCar(slot, buyer)
 	if not listing then
 		return
 	end
-	local car, seller = listing.car, listing.seller
+	local entry, seller = listing.entry, listing.seller
+	local car = carDef(entry)
 	if buyer == seller then
 		returnCar(slot) -- le vendeur retire sa voiture
 		return
@@ -1507,21 +1668,21 @@ local function buyCar(slot, buyer)
 		notify(buyer, "Your garage is full! Quick sell a car (F) or buy more parking.")
 		return
 	end
-	local price = buyPrice(car)
+	local price = buyPrice(entry)
 	if cash.Value < price then
 		notify(buyer, "Not enough cash! You need $" .. formatMoney(price))
 		return
 	end
 
 	cash.Value -= price
-	giveCar(buyer, car)
+	giveCar(buyer, entry)
 	clearSlot(slot)
 	notify(buyer, "You bought " .. car.name .. "!")
 
 	local sellerData = playerData[seller]
 	local sellerCash = sellerData and getCash(seller)
 	if sellerCash then
-		local earned = math.floor(car.price * (Config.MarketSellerBonus + perkBonus(sellerData.owned, "marketBonus")))
+		local earned = math.floor(carValue(entry) * (Config.MarketSellerBonus + perkBonus(sellerData.owned, "marketBonus")))
 		sellerCash.Value += earned
 		notify(seller, displayName(buyer) .. " bought your " .. car.name .. "! +$" .. formatMoney(earned))
 	end
@@ -1560,7 +1721,8 @@ end
 function listCar(plot, index)
 	local seller = plot.owner
 	local data = seller and playerData[seller]
-	local car = data and data.cars[index] and carsById[data.cars[index]]
+	local entry = data and data.cars[index]
+	local car = carDef(entry)
 	if not car then
 		return
 	end
@@ -1581,16 +1743,22 @@ function listCar(plot, index)
 	renderSlot(plot, index)
 
 	local rarity = raritiesById[car.rarity]
-	freeSlot.listing = { seller = seller, car = car, expires = os.clock() + Config.MarketDuration }
-	decorateRarity(placeCar(car, freeSlot.display, freeSlot.base), car)
-	freeSlot.prompt.ActionText = "Buy for $" .. formatMoney(buyPrice(car))
-	freeSlot.prompt.ObjectText = car.name .. " (seller: " .. displayName(seller) .. ")"
+	freeSlot.listing = { seller = seller, entry = entry, expires = os.clock() + Config.MarketDuration }
+	local listedModel = placeCar(car, freeSlot.display, freeSlot.base)
+	if isWreck(entry) then
+		makeRusty(listedModel)
+	else
+		decorateRarity(listedModel, car)
+	end
+	local label = (isWreck(entry) and "Wreck: " or "") .. car.name
+	freeSlot.prompt.ActionText = "Buy for $" .. formatMoney(buyPrice(entry))
+	freeSlot.prompt.ObjectText = label .. " (seller: " .. displayName(seller) .. ")"
 	freeSlot.prompt.Enabled = true
-	setSlotLabel(freeSlot, car.name .. " · " .. rarity.name,
-		"$" .. formatMoney(buyPrice(car)) .. "  ·  " .. displayName(seller))
+	setSlotLabel(freeSlot, label .. " · " .. rarity.name,
+		"$" .. formatMoney(buyPrice(entry)) .. "  ·  " .. displayName(seller))
 	local minutes = math.floor(Config.MarketDuration / 60 + 0.5)
 	notify(seller, car.name .. " is on the market for " .. minutes .. " min. Sold = +$"
-		.. formatMoney(math.floor(car.price * Config.MarketSellerBonus)) .. "!")
+		.. formatMoney(math.floor(carValue(entry) * Config.MarketSellerBonus)) .. "!")
 end
 
 -- Annonces expirées : la voiture revient chez le vendeur
@@ -1610,54 +1778,111 @@ end)
 local function cancelListings(player)
 	for _, slot in ipairs(slots) do
 		if slot.listing and slot.listing.seller == player then
-			local car = slot.listing.car
+			local entry = slot.listing.entry
 			clearSlot(slot)
-			giveCar(player, car)
+			giveCar(player, entry)
 		end
 	end
 end
 
 -- ============================================================
--- Tapis de livraison : un anneau autour du marché où défilent des voitures
--- de rareté aléatoire. Le premier qui l'achète la récupère !
+-- Livraison par camion : il arrive par l'autoroute (au bord de la carte),
+-- dépose des épaves sur le parking de livraison, puis repart.
+-- Le premier qui achète une épave la ramène dans son garage pour la restaurer.
 -- ============================================================
 
-local beltFolder = Instance.new("Folder")
-beltFolder.Name = "DeliveryBelt"
-beltFolder.Parent = workspace
+local deliveryFolder = Instance.new("Folder")
+deliveryFolder.Name = "Delivery"
+deliveryFolder.Parent = workspace
 
-local BELT_RADIUS = Config.DeliveryRadius or 44
-local BELT_SEGMENTS = 64
-for i = 1, BELT_SEGMENTS do
-	local angle = (i / BELT_SEGMENTS) * 2 * math.pi
-	local position = Vector3.new(math.cos(angle) * BELT_RADIUS, 0.15, math.sin(angle) * BELT_RADIUS)
-	local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
-	local length = 2 * math.pi * BELT_RADIUS / BELT_SEGMENTS + 0.3
-	makePart(beltFolder, {
-		Name = "Belt", Size = Vector3.new(11, 0.3, length), CFrame = CFrame.lookAt(position, position + tangent),
-		Color = Color3.fromRGB(30, 30, 35), Material = Enum.Material.DiamondPlate, CastShadow = false,
+local ROAD_ANGLE = math.rad(Config.RoadAngle or 22.5)
+local ROAD_DIR = Vector3.new(math.cos(ROAD_ANGLE), 0, math.sin(ROAD_ANGLE)) -- du centre vers l'extérieur
+local ROAD_SIDE = Vector3.new(-ROAD_DIR.Z, 0, ROAD_DIR.X)
+local ROAD_START, ROAD_END = 50, Config.PlotDistance + 160 -- l'autoroute va du parking au bord de la carte
+local TRUCK_STOP = 97 -- le camion s'arrête ici (le long du parking)
+
+local function roadPoint(distance, lateral, height)
+	return ROAD_DIR * distance + ROAD_SIDE * (lateral or 0) + Vector3.new(0, height or 0, 0)
+end
+
+-- Autoroute : asphalte, lignes blanches, bandes jaunes
+do
+	local length = ROAD_END - ROAD_START
+	local middle = roadPoint(ROAD_START + length / 2, 0, 0.12)
+	makePart(deliveryFolder, {
+		Name = "Highway", Size = Vector3.new(20, 0.2, length),
+		CFrame = CFrame.lookAt(middle, middle + ROAD_DIR),
+		Color = Color3.fromRGB(40, 40, 45), Material = Enum.Material.Asphalt, CastShadow = false,
 	})
-	for _, side in ipairs({ -5.6, 5.6 }) do
-		local edge = Vector3.new(math.cos(angle) * (BELT_RADIUS + side), 0.35, math.sin(angle) * (BELT_RADIUS + side))
-		makePart(beltFolder, {
-			Name = "BeltEdge", Size = Vector3.new(0.3, 0.2, length), CFrame = CFrame.lookAt(edge, edge + tangent),
+	for distance = ROAD_START + 4, ROAD_END - 4, 10 do
+		local point = roadPoint(distance, 0, 0.25)
+		makePart(deliveryFolder, {
+			Name = "RoadLine", Size = Vector3.new(0.6, 0.1, 4), CFrame = CFrame.lookAt(point, point + ROAD_DIR),
+			Color = Color3.new(1, 1, 1), Material = Enum.Material.SmoothPlastic, CastShadow = false,
+		})
+	end
+	for _, side in ipairs({ -9.4, 9.4 }) do
+		local point = roadPoint(ROAD_START + length / 2, side, 0.25)
+		makePart(deliveryFolder, {
+			Name = "RoadEdge", Size = Vector3.new(0.4, 0.1, length), CFrame = CFrame.lookAt(point, point + ROAD_DIR),
 			Color = COLOR_GOLD, Material = Enum.Material.Neon, CastShadow = false,
 		})
 	end
+	-- Portique d'entrée de la carte : c'est par là que le camion arrive
+	local gate = roadPoint(ROAD_END - 20, 0, 0)
+	local facing = CFrame.lookAt(gate, gate - ROAD_DIR)
+	for _, side in ipairs({ -12, 12 }) do
+		makePart(deliveryFolder, {
+			Name = "GatePost", Size = Vector3.new(1.5, 16, 1.5), CFrame = facing * CFrame.new(side, 8, 0),
+			Color = COLOR_DARK, Material = Enum.Material.Metal,
+		})
+	end
+	local beam = makePart(deliveryFolder, {
+		Name = "GateBeam", Size = Vector3.new(26, 3, 1), CFrame = facing * CFrame.new(0, 16, 0),
+		Color = Color3.fromRGB(30, 110, 60), Material = Enum.Material.SmoothPlastic,
+	})
+	createBillboard(beam, "HIGHWAY", "Wreck deliveries arrive here", 3, 16)
 end
-local beltSign = makePart(beltFolder, {
-	Name = "BeltSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(BELT_RADIUS, 12, 0),
+
+-- Parking de livraison : 2 rangées de places le long de l'autoroute
+local lotSpots = {}
+do
+	local perRow = math.ceil(Config.LotSpots / 2)
+	for i = 1, Config.LotSpots do
+		local row = (i - 1) % perRow
+		local side = (i <= perRow) and -1 or 1
+		local distance = 76 + row * 14
+		local ground = roadPoint(distance, side * 14.5, 0.2)
+		local base = CFrame.lookAt(ground, ground + ROAD_DIR)
+		makePart(deliveryFolder, {
+			Name = "LotSpot", Size = Vector3.new(8, 0.2, 13.5), CFrame = base,
+			Color = Color3.fromRGB(55, 55, 60), Material = Enum.Material.Asphalt, CastShadow = false,
+		})
+		for _, x in ipairs({ -4, 4 }) do
+			makePart(deliveryFolder, {
+				Name = "SpotLine", Size = Vector3.new(0.3, 0.1, 13.5), CFrame = base * CFrame.new(x, 0.12, 0),
+				Color = Color3.new(1, 1, 1), Material = Enum.Material.SmoothPlastic, CastShadow = false,
+			})
+		end
+		lotSpots[i] = { base = base * CFrame.new(0, 0.1, 0) }
+	end
+end
+
+-- Panneau : compte à rebours jusqu'au prochain camion
+local lotSignPart = makePart(deliveryFolder, {
+	Name = "LotSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(roadPoint(97, 0, 18)),
 	Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
 })
-createBillboard(beltSign, "CAR DELIVERY", "Rare cars pass by... be fast!", 0, 22)
-
-local beltCars = {} -- { car, model, root, offset, angle }
-
-local function beltCFrame(angle)
-	local position = Vector3.new(math.cos(angle) * BELT_RADIUS, 0.3, math.sin(angle) * BELT_RADIUS)
-	local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
-	return CFrame.lookAt(position, position + tangent)
+local lotSign = createBillboard(lotSignPart, "WRECK DELIVERY", "Truck incoming...", 0, 24)
+lotSign.MaxDistance = 250
+local lotSubtitle
+for _, label in ipairs(lotSign:GetChildren()) do
+	if label:IsA("TextLabel") and label.Text == "Truck incoming..." then
+		lotSubtitle = label
+	end
 end
+
+local lotCars = {} -- { car, model, root, spot, expires }
 
 -- Tire une rareté au hasard selon les chances (weight), puis une voiture de cette rareté
 local function rollCar(rarityId)
@@ -1696,17 +1921,22 @@ local function rollCar(rarityId)
 	return Config.Cars[math.random(#Config.Cars)]
 end
 
-local function removeBeltCar(entry)
+local function wreckPrice(car)
+	return math.floor(car.price * Config.WreckPriceRatio)
+end
+
+local function removeLotCar(entry)
 	entry.removed = true
 	entry.model:Destroy()
-	local position = table.find(beltCars, entry)
+	entry.spot.entry = nil
+	local position = table.find(lotCars, entry)
 	if position then
-		table.remove(beltCars, position)
+		table.remove(lotCars, position)
 	end
 end
 
-local function buyFromBelt(entry, buyer)
-	if entry.removed then
+local function buyFromLot(entry, buyer)
+	if entry.removed or not entry.forSale then
 		return
 	end
 	local car = entry.car
@@ -1719,80 +1949,278 @@ local function buyFromBelt(entry, buyer)
 		notify(buyer, "Your garage is full! Quick sell a car (F) or buy more parking.")
 		return
 	end
-	if cash.Value < car.price then
-		notify(buyer, "Not enough cash! " .. car.name .. " costs $" .. formatMoney(car.price))
+	local price = wreckPrice(car)
+	if cash.Value < price then
+		notify(buyer, "Not enough cash! This wreck costs $" .. formatMoney(price))
 		return
 	end
-	cash.Value -= car.price
-	removeBeltCar(entry)
-	giveCar(buyer, car)
-	notify(buyer, "You got a " .. raritiesById[car.rarity].name .. " " .. car.name .. "!")
+	cash.Value -= price
+	removeLotCar(entry)
+	giveCar(buyer, newWreck(car))
+	notify(buyer, "You bought a " .. raritiesById[car.rarity].name .. " " .. car.name
+		.. " wreck! Repair it in your garage: " .. needsText(Config.RepairParts[car.rarity] or {}))
 end
 
-local function spawnBeltCar(rarityId, startAngle)
-	if #beltCars >= Config.DeliveryMaxCars then
-		return
-	end
-	local car = rollCar(rarityId)
+-- Crée une épave (modèle rouillé + étiquette + bouton d'achat) à un endroit donné
+local function makeLotCar(car, cframe)
 	local rarity = raritiesById[car.rarity]
 	local model = Instance.new("Model")
-	model.Name = "Delivery_" .. car.id
-	model.Parent = beltFolder
-	local start = beltCFrame(0)
-	local carModel = placeCar(car, model, start, true)
+	model.Name = "Wreck_" .. car.id
+	model.Parent = deliveryFolder
+	local carModel = placeCar(car, model, cframe, true)
 	local root = carModel and carModel.PrimaryPart
 	if not root then
 		model:Destroy()
-		return
+		return nil
 	end
-	decorateRarity(carModel, car)
-	createBillboard(root, car.name, rarity.name .. "  ·  $" .. formatMoney(car.price), 6, 11, rarity.color)
-
-	local entry = { car = car, model = model, root = root, offset = start:ToObjectSpace(root.CFrame), angle = startAngle or 0 }
-	root.CFrame = beltCFrame(entry.angle) * entry.offset
+	makeRusty(carModel)
+	local entry = { car = car, model = model, root = root, offset = cframe:ToObjectSpace(root.CFrame) }
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Buy $" .. formatMoney(car.price)
+	prompt.ActionText = "Buy wreck $" .. formatMoney(wreckPrice(car))
 	prompt.ObjectText = car.name .. " (" .. rarity.name .. ")"
 	prompt.HoldDuration = 0.3
 	prompt.MaxActivationDistance = 14
 	prompt.RequiresLineOfSight = false
+	prompt.Enabled = false
 	prompt.Parent = root
 	prompt.Triggered:Connect(function(player)
-		buyFromBelt(entry, player)
+		buyFromLot(entry, player)
 	end)
-	table.insert(beltCars, entry)
+	entry.prompt = prompt
+	return entry
+end
 
-	if rarity.announce then
-		for _, player in ipairs(Players:GetPlayers()) do
-			notify(player, "A " .. rarity.name .. " " .. car.name .. " is on the delivery belt!")
+local function setForSale(entry)
+	local car = entry.car
+	local rarity = raritiesById[car.rarity]
+	entry.forSale = true
+	entry.expires = os.clock() + Config.LotStay
+	entry.prompt.Enabled = true
+	createBillboard(entry.root, car.name .. " (wreck)",
+		rarity.name .. "  ·  $" .. formatMoney(wreckPrice(car)) .. "  ·  worth $" .. formatMoney(car.price),
+		6, 13, rarity.color)
+	table.insert(lotCars, entry)
+end
+
+-- Le camion : cabine + remorque porte-voitures à 2 étages, tout soudé à une pièce racine
+local function buildTruck()
+	local truck = Instance.new("Model")
+	truck.Name = "DeliveryTruck"
+	truck.Parent = deliveryFolder
+	local root = makePart(truck, {
+		Name = "Chassis", Size = Vector3.new(8, 1, 46), CFrame = CFrame.new(0, 2, 0),
+		Color = COLOR_DARK, Material = Enum.Material.Metal,
+	})
+	local function piece(name, size, offset, color, material, extra)
+		local props = {
+			Name = name, Size = size, CFrame = root.CFrame * offset,
+			Color = color, Material = material or Enum.Material.SmoothPlastic, CanCollide = false,
+		}
+		for key, value in pairs(extra or {}) do
+			props[key] = value
 		end
+		return makePart(truck, props)
+	end
+	local red = Color3.fromRGB(200, 40, 35)
+	-- Cabine à l'avant (-Z = avant)
+	piece("Cab", Vector3.new(8, 6, 8), CFrame.new(0, 3.5, -19), red)
+	piece("Windshield", Vector3.new(7.4, 2.6, 0.2), CFrame.new(0, 4.6, -23.05), Color3.fromRGB(20, 25, 35),
+		Enum.Material.Glass, { Transparency = 0.2 })
+	piece("Grille", Vector3.new(6, 2, 0.3), CFrame.new(0, 1.4, -23.1), Color3.fromRGB(180, 180, 185), Enum.Material.Metal)
+	for _, x in ipairs({ -3, 3 }) do
+		piece("Headlight", Vector3.new(1.2, 0.8, 0.2), CFrame.new(x, 1.6, -23.15), Color3.new(1, 1, 0.85), Enum.Material.Neon)
+		piece("Exhaust", Vector3.new(0.6, 5, 0.6), CFrame.new(x * 1.45, 6, -15.5), Color3.fromRGB(180, 180, 185), Enum.Material.Metal)
+	end
+	-- Remorque : 2 plateaux, montants
+	piece("LowerDeck", Vector3.new(8, 0.4, 30), CFrame.new(0, 0.9, 7), Color3.fromRGB(90, 90, 95), Enum.Material.DiamondPlate)
+	piece("UpperDeck", Vector3.new(8, 0.4, 30), CFrame.new(0, 7.6, 7), Color3.fromRGB(90, 90, 95), Enum.Material.DiamondPlate)
+	for _, x in ipairs({ -3.8, 3.8 }) do
+		for _, z in ipairs({ -7.5, 7, 21.5 }) do
+			piece("Post", Vector3.new(0.4, 7, 0.4), CFrame.new(x, 4.3, z), red, Enum.Material.Metal)
+		end
+	end
+	-- Roues
+	for _, z in ipairs({ -19, -9, 12, 18 }) do
+		for _, x in ipairs({ -4.2, 4.2 }) do
+			piece("Wheel", Vector3.new(1.2, 3.2, 3.2), CFrame.new(x, -0.4, z), Color3.fromRGB(20, 20, 20),
+				Enum.Material.SmoothPlastic, { Shape = Enum.PartType.Cylinder })
+		end
+	end
+	for _, part in ipairs(truck:GetDescendants()) do
+		if part:IsA("BasePart") and part ~= root then
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = root
+			weld.Part1 = part
+			weld.Parent = root
+			part.Anchored = false
+			part.Massless = true
+		end
+	end
+	root.Anchored = true
+	truck.PrimaryPart = root
+	return truck, root
+end
+
+-- Places des voitures sur la remorque (par rapport au châssis)
+local TRUCK_DECKS = {
+	CFrame.new(0, 7.8, 0), CFrame.new(0, 7.8, 14), CFrame.new(0, 1.1, 0), CFrame.new(0, 1.1, 14),
+}
+
+local truckBusy = false
+local nextTruckAt = os.clock() + 4
+
+-- Déplace le camion et sa cargaison d'un point à un autre
+local function moveTruck(root, cargo, from, to, duration)
+	local started = os.clock()
+	while true do
+		local alpha = math.min(1, (os.clock() - started) / duration)
+		local eased = alpha * alpha * (3 - 2 * alpha) -- accélère puis freine en douceur
+		local cframe = from:Lerp(to, eased)
+		root.CFrame = cframe
+		for _, item in ipairs(cargo) do
+			if not item.unloaded and item.root.Parent then
+				item.root.CFrame = cframe * item.deck * item.offset
+			end
+		end
+		if alpha >= 1 then
+			break
+		end
+		RunService.Heartbeat:Wait()
 	end
 end
 
--- Le tapis avance : on déplace seulement la pièce principale (le reste est soudé)
-RunService.Heartbeat:Connect(function(dt)
-	local speed = 2 * math.pi / Config.DeliveryLoopTime
-	for i = #beltCars, 1, -1 do
-		local entry = beltCars[i]
-		entry.angle += speed * dt
-		if entry.angle >= 2 * math.pi or not entry.root.Parent then
-			removeBeltCar(entry)
-		else
-			entry.root.CFrame = beltCFrame(entry.angle) * entry.offset
+-- Une livraison complète : arrivée, déchargement, départ. rarities = raretés imposées (optionnel)
+local function deliveryRun(rarities)
+	local truck, root = buildTruck()
+	local height = 2 -- le châssis est au-dessus des roues
+	local outside = CFrame.lookAt(roadPoint(ROAD_END + 30, -4.5, height), roadPoint(0, -4.5, height))
+	local stop = CFrame.lookAt(roadPoint(TRUCK_STOP, -4.5, height), roadPoint(0, -4.5, height))
+	root.CFrame = outside
+
+	local cargo = {}
+	local count = math.min(Config.TruckCars or 4, #TRUCK_DECKS)
+	for i = 1, count do
+		local car = rollCar(rarities and rarities[i])
+		local item = makeLotCar(car, outside * TRUCK_DECKS[i])
+		if item then
+			item.deck = TRUCK_DECKS[i]
+			table.insert(cargo, item)
 		end
+	end
+
+	-- Annonce des épaves rares
+	for _, item in ipairs(cargo) do
+		local rarity = raritiesById[item.car.rarity]
+		if rarity.announce then
+			for _, player in ipairs(Players:GetPlayers()) do
+				notify(player, "Delivery truck incoming with a " .. rarity.name .. " " .. item.car.name .. " wreck!")
+			end
+		end
+	end
+
+	moveTruck(root, cargo, outside, stop, 9)
+
+	-- Déchargement : les épaves invendues repartent, les nouvelles prennent leur place
+	for i = #lotCars, 1, -1 do
+		local old = lotCars[i]
+		if os.clock() >= old.expires then
+			removeLotCar(old)
+		end
+	end
+	for _, item in ipairs(cargo) do
+		local spot
+		for _, candidate in ipairs(lotSpots) do
+			if not candidate.entry then
+				spot = candidate
+				break
+			end
+		end
+		if not spot then
+			-- Parking plein : on remplace l'épave la plus ancienne
+			local oldest = lotCars[1]
+			if oldest then
+				spot = oldest.spot
+				removeLotCar(oldest)
+			end
+		end
+		if spot then
+			spot.entry = item
+			item.spot = spot
+			item.unloaded = true
+			local from = item.root.CFrame
+			local to = spot.base * item.offset
+			local started = os.clock()
+			while os.clock() - started < 1 do
+				local alpha = (os.clock() - started) / 1
+				local lift = math.sin(alpha * math.pi) * 4
+				item.root.CFrame = from:Lerp(to, alpha) + Vector3.new(0, lift, 0)
+				RunService.Heartbeat:Wait()
+			end
+			item.root.CFrame = to
+			setForSale(item)
+		else
+			item.model:Destroy()
+		end
+	end
+	task.wait(1)
+
+	-- Demi-tour puis départ
+	local turned = stop * CFrame.Angles(0, math.pi, 0)
+	moveTruck(root, {}, stop, turned, 2.5)
+	local leave = CFrame.lookAt(roadPoint(ROAD_END + 30, 4.5, height), roadPoint(ROAD_END + 60, 4.5, height))
+	local start = CFrame.lookAt(roadPoint(TRUCK_STOP, 4.5, height), roadPoint(ROAD_END, 4.5, height))
+	moveTruck(root, {}, turned, start, 1)
+	moveTruck(root, {}, start, leave, 8)
+	truck:Destroy()
+end
+
+local function runDelivery(rarities)
+	if truckBusy then
+		return false
+	end
+	truckBusy = true
+	local ok, err = pcall(deliveryRun, rarities)
+	if not ok then
+		warn("[Tycoon] Erreur pendant la livraison :", err)
+		local leftover = deliveryFolder:FindFirstChild("DeliveryTruck")
+		if leftover then
+			leftover:Destroy()
+		end
+	end
+	truckBusy = false
+	nextTruckAt = os.clock() + Config.TruckInterval
+	return ok
+end
+
+-- Les épaves qui attendent trop longtemps repartent ; le panneau affiche le compte à rebours
+task.spawn(function()
+	while true do
+		for i = #lotCars, 1, -1 do
+			local entry = lotCars[i]
+			if os.clock() >= entry.expires + 120 then
+				removeLotCar(entry)
+			end
+		end
+		if lotSubtitle then
+			if truckBusy then
+				lotSubtitle.Text = "Truck is here! Grab a wreck!"
+			else
+				lotSubtitle.Text = "Next truck in " .. math.max(0, math.ceil(nextTruckAt - os.clock())) .. "s"
+			end
+		end
+		task.wait(1)
 	end
 end)
 
 task.spawn(function()
-	-- Au lancement, le tapis est déjà rempli, avec au moins une belle voiture
-	local prefill = Config.DeliveryPrefill or 6
-	for i = 1, prefill do
-		local rarity = (i == 1) and "legendary" or ((i == 2) and "epic" or nil)
-		spawnBeltCar(rarity, (i / (prefill + 1)) * 2 * math.pi)
-	end
+	-- Première livraison avec de belles voitures pour donner envie
+	task.wait(3)
+	runDelivery({ "legendary", "epic", nil, nil })
 	while true do
-		task.wait(Config.DeliveryInterval)
-		spawnBeltCar()
+		task.wait(1)
+		if not truckBusy and os.clock() >= nextTruckAt then
+			runDelivery()
+		end
 	end
 end)
 
@@ -1801,7 +2229,7 @@ end)
 -- garage sans se faire toucher par le propriétaire. Le bouclier protège 60 s.
 -- ============================================================
 
-local carrying = {} -- [voleur] = { car, victim, model, deadline }
+local carrying = {} -- [voleur] = { entry, car, victim, model, deadline }
 
 -- Personnage d'un joueur ou d'un bot
 local function getCharacter(owner)
@@ -1868,11 +2296,6 @@ local function lockGarage(plot)
 	return true
 end
 
--- Crochet actif : le joueur peut traverser les boucliers quelques secondes
-local function hasLockpick(player)
-	return os.clock() < (player:GetAttribute("LockpickUntil") or 0)
-end
-
 for _, plot in ipairs(plots) do
 	plot.lockPrompt.Triggered:Connect(function(player)
 		if player == plot.owner then
@@ -1886,16 +2309,17 @@ for _, plot in ipairs(plots) do
 			end
 			local character = hit.Parent
 			local player = Players:GetPlayerFromCharacter(character)
-			if player and player ~= plot.owner and not hasLockpick(player) then
+			if player and player ~= plot.owner then
 				pushOut(plot, character)
-				notify(player, "This garage is locked! (a Lockpick can open it)")
+				notify(player, "This garage is locked!")
 			end
 		end)
 	end
 end
 
 -- Mini-voiture au-dessus de la tête du voleur
-local function attachCarriedCar(character, car)
+local function attachCarriedCar(character, entry)
+	local car = carDef(entry)
 	local head = character:FindFirstChild("Head")
 	if not head then
 		return nil
@@ -1907,6 +2331,9 @@ local function attachCarriedCar(character, car)
 	if not model or not model.PrimaryPart then
 		holder:Destroy()
 		return nil
+	end
+	if isWreck(entry) then
+		makeRusty(model)
 	end
 	model:ScaleTo(0.35)
 	model:PivotTo(head.CFrame * CFrame.new(0, 2, 0))
@@ -1923,13 +2350,13 @@ local function attachCarriedCar(character, car)
 	return holder
 end
 
--- Vitesse : 16 normalement, plus lent en portant une voiture, + bonus des bottes
+-- Vitesse : 16 normalement, plus lent en portant une voiture
 local function applySpeed(owner)
 	local character = getCharacter(owner)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		local base = carrying[owner] and Config.CarryWalkSpeed or 16
-		humanoid.WalkSpeed = base + (owner:GetAttribute("SpeedBonus") or 0)
+		humanoid.WalkSpeed = base
 	end
 end
 
@@ -1950,7 +2377,8 @@ function tryStealCar(thief, plot, index)
 	local victim = plot.owner
 	local victimData = victim and playerData[victim]
 	local thiefData = playerData[thief]
-	local car = victimData and victimData.cars[index] and carsById[victimData.cars[index]]
+	local stolen = victimData and victimData.cars[index]
+	local car = carDef(stolen)
 	if not car or not thiefData or not thiefData.plot or thiefData.plot == plot then
 		return false
 	end
@@ -1958,7 +2386,7 @@ function tryStealCar(thief, plot, index)
 		notify(thief, "You are already carrying a car!")
 		return false
 	end
-	if isLocked(plot) and not (thief:IsA("Player") and hasLockpick(thief)) then
+	if isLocked(plot) then
 		notify(thief, "This garage is locked!")
 		return false
 	end
@@ -1971,9 +2399,10 @@ function tryStealCar(thief, plot, index)
 	renderSlot(plot, index)
 	local character = getCharacter(thief)
 	carrying[thief] = {
+		entry = stolen,
 		car = car,
 		victim = victim,
-		model = character and attachCarriedCar(character, car),
+		model = character and attachCarriedCar(character, stolen),
 		deadline = os.clock() + Config.CarryTimeout,
 	}
 	applySpeed(thief)
@@ -1993,213 +2422,22 @@ task.spawn(function()
 			if not thiefData or not thiefRoot or os.clock() > entry.deadline then
 				-- Voleur parti, mort ou trop lent : la voiture revient
 				endCarry(thief)
-				giveCar(entry.victim, entry.car)
+				giveCar(entry.victim, entry.entry)
 				notify(entry.victim, "Your " .. entry.car.name .. " came back!")
 			elseif victimRoot and (victimRoot.Position - thiefRoot.Position).Magnitude < 6 then
 				endCarry(thief)
-				giveCar(entry.victim, entry.car)
+				giveCar(entry.victim, entry.entry)
 				notify(entry.victim, "You caught " .. displayName(thief) .. "! " .. entry.car.name .. " is back.")
 				notify(thief, "Caught! " .. entry.car.name .. " went back to its owner.")
 			elseif thiefData.plot and inPlot(thiefData.plot, thiefRoot.Position) then
 				endCarry(thief)
-				giveCar(thief, entry.car)
+				giveCar(thief, entry.entry)
 				notify(thief, "Stolen car secured: " .. entry.car.name .. "!")
 				notify(entry.victim, displayName(thief) .. " stole your " .. entry.car.name .. "!")
 			end
 		end
 	end
 end)
-
--- ============================================================
--- Boutique d'objets (au centre) : bottes de vitesse, batte, crochet
--- ============================================================
-
-local function toolOwner(tool)
-	local parent = tool.Parent
-	if not parent then
-		return nil
-	end
-	return Players:GetPlayerFromCharacter(parent) or (parent.Parent and parent.Parent:IsA("Player") and parent.Parent) or nil
-end
-
-local function makeTool(gearId)
-	local gear = Config.Gear[gearId]
-	local tool = Instance.new("Tool")
-	tool.Name = gear.name
-	tool.ToolTip = gear.description
-	tool.CanBeDropped = false
-	tool:SetAttribute("Gear", gearId)
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Color = gear.color
-	if gearId == "bat" then
-		handle.Size = Vector3.new(0.4, 4, 0.4)
-		handle.Material = Enum.Material.Wood
-		tool.GripPos = Vector3.new(0, -1.5, 0)
-	elseif gearId == "coil" then
-		handle.Shape = Enum.PartType.Cylinder
-		handle.Size = Vector3.new(1.2, 1, 1)
-		handle.Material = Enum.Material.Neon
-	else
-		handle.Size = Vector3.new(0.3, 1.2, 0.3)
-		handle.Material = Enum.Material.Metal
-	end
-	handle.Parent = tool
-	CollectionService:AddTag(tool, "GearTool")
-	return tool
-end
-
-local function playerHasGear(player, gearId)
-	for _, container in ipairs({ player:FindFirstChild("Backpack"), player.Character, player:FindFirstChild("StarterGear") }) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				if child:IsA("Tool") and child:GetAttribute("Gear") == gearId then
-					return true
-				end
-			end
-		end
-	end
-	return false
-end
-
-local function buyGear(player, gearId)
-	local gear = Config.Gear[gearId]
-	local cash = getCash(player)
-	if not gear or not cash then
-		return
-	end
-	if playerHasGear(player, gearId) then
-		notify(player, "You already have " .. gear.name .. "!")
-		return
-	end
-	if cash.Value < gear.price then
-		notify(player, "Not enough cash! " .. gear.name .. " costs $" .. formatMoney(gear.price))
-		return
-	end
-	cash.Value -= gear.price
-	makeTool(gearId).Parent = player:FindFirstChild("Backpack")
-	if not gear.consumable then
-		makeTool(gearId).Parent = player:FindFirstChild("StarterGear") -- gardé après la mort
-	end
-	notify(player, "You bought " .. gear.name .. "! " .. gear.description)
-end
-
--- Tous les personnages (joueurs et bots) avec leur propriétaire
-local function allOwners()
-	local owners = Players:GetPlayers()
-	local botFolder = ServerStorage:FindFirstChild("Bots")
-	if botFolder then
-		for _, bot in ipairs(botFolder:GetChildren()) do
-			table.insert(owners, bot)
-		end
-	end
-	return owners
-end
-
-local function swingBat(player, tool)
-	if os.clock() < (tool:GetAttribute("ReadyAt") or 0) then
-		return
-	end
-	tool:SetAttribute("ReadyAt", os.clock() + Config.Gear.bat.cooldown)
-	local root = getRoot(player)
-	if not root then
-		return
-	end
-	for _, target in ipairs(allOwners()) do
-		local targetRoot = target ~= player and getRoot(target)
-		if targetRoot then
-			local offset = targetRoot.Position - root.Position
-			if offset.Magnitude < 9 and root.CFrame.LookVector:Dot(offset.Unit) > 0.2 then
-				-- Assommé : ne bouge plus quelques secondes et lâche la voiture volée
-				local humanoid = targetRoot.Parent:FindFirstChildOfClass("Humanoid")
-				if humanoid then
-					humanoid.WalkSpeed = 0
-					task.delay(Config.Gear.bat.stun, function()
-						applySpeed(target)
-					end)
-				end
-				local entry = carrying[target]
-				if entry then
-					endCarry(target)
-					giveCar(entry.victim, entry.car)
-					notify(entry.victim, displayName(player) .. " stopped the thief! " .. entry.car.name .. " is back.")
-				end
-				notify(target, displayName(player) .. " hit you with a bat!")
-			end
-		end
-	end
-end
-
-local function setupTool(tool)
-	local gearId = tool:GetAttribute("Gear")
-	tool.Equipped:Connect(function()
-		local player = toolOwner(tool)
-		if player and gearId == "coil" then
-			player:SetAttribute("SpeedBonus", Config.Gear.coil.bonus)
-			applySpeed(player)
-		end
-	end)
-	tool.Unequipped:Connect(function()
-		local player = Players:GetPlayerFromCharacter(tool.Parent) or toolOwner(tool)
-		if player and gearId == "coil" then
-			player:SetAttribute("SpeedBonus", 0)
-			applySpeed(player)
-		end
-	end)
-	tool.Activated:Connect(function()
-		local player = toolOwner(tool)
-		if not player then
-			return
-		end
-		if gearId == "bat" then
-			swingBat(player, tool)
-		elseif gearId == "lockpick" then
-			player:SetAttribute("LockpickUntil", os.clock() + Config.Gear.lockpick.duration)
-			notify(player, "Lockpick active for " .. Config.Gear.lockpick.duration .. "s: walk through locked shields!")
-			tool:Destroy()
-		end
-	end)
-end
-CollectionService:GetInstanceAddedSignal("GearTool"):Connect(setupTool)
-
--- Comptoir de la boutique, au centre du marché
-local shopFolder = Instance.new("Folder")
-shopFolder.Name = "GearShop"
-shopFolder.Parent = workspace
-makePart(shopFolder, {
-	Name = "Counter", Size = Vector3.new(14, 3, 4), CFrame = CFrame.new(0, 1.8, 0),
-	Color = Color3.fromRGB(60, 40, 30), Material = Enum.Material.Wood,
-})
-makePart(shopFolder, {
-	Name = "CounterTop", Size = Vector3.new(14.4, 0.3, 4.4), CFrame = CFrame.new(0, 3.45, 0),
-	Color = COLOR_DARK, Material = Enum.Material.Marble,
-})
-local shopSign = makePart(shopFolder, {
-	Name = "ShopSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(0, 8, 0),
-	Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
-})
-createBillboard(shopSign, "GEAR SHOP", "Tools to steal and protect", 0, 14)
-local gearOrder = { "coil", "bat", "lockpick" }
-for i, gearId in ipairs(gearOrder) do
-	local gear = Config.Gear[gearId]
-	local stand = makePart(shopFolder, {
-		Name = "Gear_" .. gearId, Size = Vector3.new(1.4, 1.4, 1.4), CFrame = CFrame.new((i - 2) * 4.5, 4.5, 0),
-		Color = gear.color, Material = Enum.Material.Neon, Shape = Enum.PartType.Ball,
-	})
-	createBillboard(stand, gear.name, "$" .. formatMoney(gear.price), 2.5, 6)
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Buy $" .. formatMoney(gear.price)
-	prompt.ObjectText = gear.name
-	prompt.HoldDuration = 0.3
-	prompt.MaxActivationDistance = 10
-	prompt.RequiresLineOfSight = false
-	prompt.Parent = stand
-	prompt.Triggered:Connect(function(player)
-		buyGear(player, gearId)
-	end)
-end
 
 -- Panneaux de sécurité : compte à rebours au-dessus de chaque garage et sur la console
 local function setLabels(gui, title, subtitle, color)
@@ -2353,9 +2591,19 @@ local function buildTown()
 		Color3.fromRGB(200, 190, 175), Color3.fromRGB(150, 160, 175), Color3.fromRGB(180, 120, 100),
 		Color3.fromRGB(110, 115, 125), Color3.fromRGB(225, 220, 210),
 	}
+	-- L'autoroute du camion traverse la ville : on n'y met ni immeuble ni arbre
+	local highwayAngle = math.rad(Config.RoadAngle or 22.5)
+	local function nearHighway(angle, margin)
+		local diff = math.abs((angle - highwayAngle + math.pi) % (2 * math.pi) - math.pi)
+		return diff < margin
+	end
+
 	local count = 40
 	for i = 1, count do
 		local angle = (i / count) * 2 * math.pi + rng:NextNumber(-0.05, 0.05)
+		if nearHighway(angle, math.rad(10)) then
+			continue
+		end
 		local distance = rng:NextNumber(roadRadius + 25, roadRadius + 60)
 		local width, depth, height = rng:NextNumber(18, 28), rng:NextNumber(16, 24), rng:NextNumber(22, 75)
 		local ground = Vector3.new(math.cos(angle) * distance, 0, math.sin(angle) * distance)
@@ -2380,6 +2628,9 @@ local function buildTown()
 	-- Arbres le long de la route
 	for i = 1, 24 do
 		local angle = (i / 24) * 2 * math.pi + math.pi / 24
+		if nearHighway(angle, math.rad(5)) then
+			continue
+		end
 		local position = Vector3.new(math.cos(angle) * (roadRadius + 12), 0, math.sin(angle) * (roadRadius + 12))
 		townPart({
 			Name = "Trunk", Size = Vector3.new(1.2, 6, 1.2), CFrame = CFrame.new(position + Vector3.new(0, 3, 0)),
@@ -2492,7 +2743,7 @@ local function loadData(player)
 	if RunService:IsStudio() and Config.StudioTestCash > 0 then
 		startingCash = Config.StudioTestCash -- mode test : uniquement dans Studio
 	end
-	local data = { owned = {}, cars = {}, cash = startingCash, rebirths = 0, loaded = true }
+	local data = { owned = {}, cars = {}, parts = {}, cash = startingCash, rebirths = 0, loaded = true }
 	if not dataStore then
 		return data
 	end
@@ -2516,7 +2767,23 @@ local function loadData(player)
 		if type(saved.cars) == "table" then
 			for _, entry in ipairs(saved.cars) do
 				if type(entry) == "table" and carsById[entry.car] and Config.CarSlots[entry.slot] then
-					data.cars[entry.slot] = entry.car
+					local needs = nil
+					if type(entry.needs) == "table" then
+						needs = {}
+						for partId, amount in pairs(entry.needs) do
+							if Config.PartNames[partId] and tonumber(amount) then
+								needs[partId] = tonumber(amount)
+							end
+						end
+					end
+					data.cars[entry.slot] = { id = entry.car, needs = needs }
+				end
+			end
+		end
+		if type(saved.parts) == "table" then
+			for partId, amount in pairs(saved.parts) do
+				if Config.PartNames[partId] and tonumber(amount) then
+					data.parts[partId] = tonumber(amount)
 				end
 			end
 		end
@@ -2535,14 +2802,15 @@ local function saveData(player)
 		table.insert(owned, id)
 	end
 	local cars = {}
-	for slot, carId in pairs(data.cars) do
-		table.insert(cars, { slot = slot, car = carId })
+	for slot, entry in pairs(data.cars) do
+		table.insert(cars, { slot = slot, car = entry.id, needs = entry.needs })
 	end
 	local ok, err = pcall(function()
 		dataStore:SetAsync("player_" .. player.UserId, {
 			cash = cash.Value,
 			owned = owned,
 			cars = cars,
+			parts = data.parts,
 			rebirths = getRebirths(player),
 		})
 	end)
@@ -2578,6 +2846,9 @@ local function onPlayerAdded(player)
 	leaderstats.Parent = player
 
 	player:SetAttribute("CashMultiplier", 1)
+	for partId, amount in pairs(data.parts) do
+		player:SetAttribute("Parts_" .. partId, amount)
+	end
 	if Config.CashX2GamePassId ~= 0 then
 		local ok, owns = pcall(function()
 			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, Config.CashX2GamePassId)
@@ -2596,7 +2867,7 @@ local function onPlayerAdded(player)
 	assignPlot(plot, player)
 	print("[Tycoon] " .. player.Name .. " -> garage " .. plot.index)
 	if RunService:IsStudio() then
-		notify(player, #Config.Cars .. " cars on the delivery belt (from ServerStorage > Assets)")
+		notify(player, #Config.Cars .. " cars can be delivered by the truck (from ServerStorage > Assets)")
 	end
 
 	-- Quand le perso meurt, il réapparaît dans son garage après quelques secondes
@@ -2612,7 +2883,7 @@ end
 local function onPlayerRemoving(player)
 	local carried = endCarry(player)
 	if carried then
-		giveCar(carried.victim, carried.car)
+		giveCar(carried.victim, carried.entry)
 	end
 	cancelListings(player)
 	saveData(player)
@@ -2742,7 +3013,7 @@ end
 
 -- Revenu estimé par seconde (machines x améliorations + voitures) : sert aux bots à réfléchir
 local function estimateIncome(owner, owned, cars)
-	local dropperIncome, upgrade, carIncome = 0, 1, 0
+	local dropperIncome, upgrade, carTotal = 0, 1, 0
 	for _, item in ipairs(Config.Items) do
 		if owned[item.id] then
 			if item.kind == "dropper" then
@@ -2752,14 +3023,11 @@ local function estimateIncome(owner, owned, cars)
 			end
 		end
 	end
-	for _, carId in pairs(cars or {}) do
-		local car = carsById[carId]
-		if car then
-			carIncome += car.income
-		end
+	for _, entry in pairs(cars or {}) do
+		carTotal += carIncome(entry)
 	end
-	carIncome *= 1 + perkBonus(owned, "carIncomeBonus")
-	return (dropperIncome * upgrade + carIncome) * getMultiplier(owner)
+	carTotal *= 1 + perkBonus(owned, "carIncomeBonus")
+	return (dropperIncome * upgrade + carTotal) * getMultiplier(owner)
 end
 
 -- Combien d'argent par seconde rapporterait un achat (ou ce qu'il débloque)
@@ -2770,9 +3038,9 @@ local function incomeGain(owner, owned, item, cars)
 	if item.kind == "parking" or item.kind == "floor" then
 		-- Des places en plus valent surtout quand le garage est plein
 		local count, total = 0, 0
-		for _, carId in pairs(cars or {}) do
+		for _, entry in pairs(cars or {}) do
 			count += 1
-			total += carsById[carId].income
+			total += carIncome(entry)
 		end
 		local data = { owned = owned, cars = cars or {} }
 		local full = freeSlotIndex(data) == nil
@@ -2834,22 +3102,53 @@ local function botBrain(bot, state)
 			lockGarage(plot)
 			continue
 		end
+		-- Réparer une épave : quand il a toutes les pièces (ou de temps en temps pour avancer)
+		local repaired = false
+		for index, entry in pairs(data.cars) do
+			if isWreck(entry) then
+				local complete, some = true, false
+				for partId, need in pairs(entry.needs) do
+					local have = data.parts[partId] or 0
+					if have < need then
+						complete = false
+					end
+					if need > 0 and have > 0 then
+						some = true
+					end
+				end
+				if complete or (some and math.random() < 0.25) then
+					local car = carDef(entry)
+					setThought(state, complete and ("All parts ready! Restoring my " .. car.name .. "!")
+						or ("Working on my " .. car.name .. " wreck..."))
+					local p = Config.CarSlots[index].position
+					botWalkTo(state, at(plot, p.X - 7, p.Y + 3, p.Z).Position)
+					if bots[bot] and data.cars[index] == entry then
+						repairCar(plot, index)
+					end
+					repaired = true
+					break
+				end
+			end
+		end
+		if repaired then
+			continue
+		end
 		-- Tenter un vol dans un garage ouvert
 		if freeSlotIndex(data) and math.random() < personality.steal then
 			local bestPlot, bestIndex, bestIncome = nil, nil, 0
 			for _, other in ipairs(plots) do
 				local otherData = other ~= plot and other.owner and playerData[other.owner]
 				if otherData and not isLocked(other) then
-					for index, carId in pairs(otherData.cars) do
-						local car = carsById[carId]
-						if car and car.income > bestIncome then
-							bestPlot, bestIndex, bestIncome = other, index, car.income
+					for index, entry in pairs(otherData.cars) do
+						local value = carValue(entry)
+						if value > bestIncome then
+							bestPlot, bestIndex, bestIncome = other, index, value
 						end
 					end
 				end
 			end
 			if bestPlot then
-				local car = carsById[playerData[bestPlot.owner].cars[bestIndex]]
+				local car = carDef(playerData[bestPlot.owner].cars[bestIndex])
 				setThought(state, "That " .. car.name .. " looks nice... I'll steal it!")
 				local p = Config.CarSlots[bestIndex].position
 				local target = at(bestPlot, p.X - 7, p.Y + 3, p.Z).Position
@@ -2874,13 +3173,14 @@ local function botBrain(bot, state)
 				table.insert(options, { kind = "buy", item = item, wait = wait, score = wait + item.price / gain })
 			end
 		end
-		-- Voitures : sur le tapis de livraison et au marché
+		-- Voitures : épaves du parking de livraison et voitures du marché
 		local hasFreeSlot = freeSlotIndex(data) ~= nil
 		local worstSlot, worstIncome = worstCarSlot(data)
 		local multiplier = getMultiplier(bot)
-		local function considerCar(kind, car, price, extra)
+		local function considerCar(kind, car, price, wreck, extra)
+			-- Une épave rapportera plus tard (il faut la réparer) : elle compte moitié moins
 			-- Garage plein : intéressant seulement si elle rapporte plus que la pire voiture
-			local gain = car.income - (hasFreeSlot and 0 or worstIncome)
+			local gain = car.income * (wreck and 0.5 or 1) - (hasFreeSlot and 0 or worstIncome)
 			if gain <= 0 then
 				return
 			end
@@ -2891,18 +3191,18 @@ local function botBrain(bot, state)
 			end
 			table.insert(options, option)
 		end
-		local speed = 2 * math.pi / Config.DeliveryLoopTime
-		for _, entry in ipairs(beltCars) do
-			local timeLeft = (2 * math.pi - entry.angle) / speed
-			-- Inutile d'économiser pour une voiture qui aura quitté le tapis avant
-			if math.max(0, entry.car.price - cash.Value) / income < timeLeft then
-				considerCar("belt", entry.car, entry.car.price, { entry = entry })
+		for _, entry in ipairs(lotCars) do
+			local timeLeft = entry.expires - os.clock()
+			-- Inutile d'économiser pour une épave qui sera repartie avant
+			local price = wreckPrice(entry.car)
+			if math.max(0, price - cash.Value) / income < timeLeft then
+				considerCar("lot", entry.car, price, true, { entry = entry })
 			end
 		end
 		for _, slot in ipairs(slots) do
 			local listing = slot.listing
 			if listing and listing.seller ~= bot then
-				considerCar("market", listing.car, buyPrice(listing.car), { slot = slot })
+				considerCar("market", carDef(listing.entry), buyPrice(listing.entry), isWreck(listing.entry), { slot = slot })
 			end
 		end
 		if plot.rebirthButton then
@@ -2945,7 +3245,7 @@ local function botBrain(bot, state)
 			if bots[bot] then
 				purchase(plot, bot, choice.item)
 			end
-		elseif choice.kind == "belt" or choice.kind == "market" then
+		elseif choice.kind == "lot" or choice.kind == "market" then
 			if not freeSlotIndex(data) and worstSlot then
 				quickSell(plot, worstSlot) -- fait de la place pour une meilleure voiture
 			end
@@ -2954,20 +3254,15 @@ local function botBrain(bot, state)
 				local root = getRoot(bot)
 				return root and (root.Position - position).Magnitude < 18
 			end
-			if choice.kind == "belt" then
+			if choice.kind == "lot" then
 				local rarity = raritiesById[choice.item.rarity]
-				setThought(state, reason or ("A " .. rarity.name .. " " .. choice.item.name .. "? I want it!"))
+				setThought(state, reason or ("A " .. rarity.name .. " " .. choice.item.name .. " wreck? I'll restore it!"))
 				local entry = choice.entry
-				for _ = 1, 3 do -- la voiture avance : il la rattrape
-					if entry.removed or closeTo(entry.root.Position) then
-						break
-					end
-					botWalkTo(state, entry.root.Position + entry.root.CFrame.LookVector * 8)
-				end
+				botWalkTo(state, entry.root.Position + entry.root.CFrame.RightVector * 7)
 				if not entry.removed and closeTo(entry.root.Position) then
-					buyFromBelt(entry, bot)
+					buyFromLot(entry, bot)
 				else
-					setThought(state, "Too late for the " .. choice.item.name .. "...")
+					setThought(state, "Someone took the " .. choice.item.name .. "...")
 				end
 			else
 				setThought(state, reason or ("Cheap " .. choice.item.name .. " at the market!"))
@@ -2999,7 +3294,7 @@ local function botBrain(bot, state)
 			local sellSlot = worstCarSlot(data) -- recalculé : il a pu vendre une voiture juste avant
 			if count >= 3 and sellSlot then
 				-- il vend sa moins bonne voiture et garde les meilleures
-				setThought(state, "Selling my " .. carsById[data.cars[sellSlot]].name .. " for +50% profit!")
+				setThought(state, "Selling my " .. carDef(data.cars[sellSlot]).name .. " for +50% profit!")
 				listCar(plot, sellSlot)
 				state.nextTrade = os.clock() + Config.BotTradeCooldown
 			end
@@ -3036,7 +3331,7 @@ local function createBot(plot)
 	rebirths.Parent = leaderstats
 	bot.Parent = botsFolder
 
-	playerData[bot] = { owned = {}, cars = {}, cash = 0, rebirths = 0, loaded = false }
+	playerData[bot] = { owned = {}, cars = {}, parts = {}, cash = 0, rebirths = 0, loaded = false }
 	local personality = Config.BotPersonalities[math.random(#Config.BotPersonalities)]
 	local state = { plot = plot, personality = personality }
 	bots[bot] = state
@@ -3117,8 +3412,21 @@ local function onTestCommand(player, message)
 	elseif command == "deliver" then
 		local rarity = Config.Rarities[amount]
 		if rarity then
-			spawnBeltCar(rarity.id)
-			notify(player, "Test: a " .. rarity.name .. " car is on the delivery belt")
+			notify(player, "Test: a truck is coming with a " .. rarity.name .. " wreck")
+			task.spawn(function()
+				while truckBusy do
+					task.wait(1)
+				end
+				runDelivery({ rarity.id })
+			end)
+		end
+	elseif command == "parts" then
+		local data = playerData[player]
+		if data then
+			for _, partId in ipairs(PART_IDS) do
+				addParts(player, partId, amount)
+			end
+			notify(player, "Test: +" .. amount .. " of each part")
 		end
 	elseif command == "rebirths" and stats then
 		stats.Rebirths.Value = amount
@@ -3207,11 +3515,8 @@ task.spawn(function()
 			local cash = owner and getCash(owner)
 			if data and cash then
 				local income = 0
-				for _, carId in pairs(data.cars) do
-					local car = carsById[carId]
-					if car then
-						income += car.income
-					end
+				for _, entry in pairs(data.cars) do
+					income += carIncome(entry)
 				end
 				income *= 1 + perkBonus(data.owned, "carIncomeBonus")
 				if income > 0 then

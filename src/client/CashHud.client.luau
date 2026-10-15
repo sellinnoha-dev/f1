@@ -88,6 +88,55 @@ end
 cash.Changed:Connect(update)
 update()
 
+-- ============================================================
+-- Stock de pièces (pour réparer les épaves), en bas à gauche
+-- ============================================================
+local PART_IDS = { "bolt", "tire", "engine", "panel", "rim" }
+local PART_COLORS = {
+	bolt = Color3.fromRGB(200, 200, 210), tire = Color3.fromRGB(120, 120, 120), engine = Color3.fromRGB(255, 120, 60),
+	panel = Color3.fromRGB(80, 150, 255), rim = Color3.fromRGB(255, 200, 0),
+}
+
+local partsFrame = Instance.new("Frame")
+partsFrame.AnchorPoint = Vector2.new(0, 1)
+partsFrame.Position = UDim2.new(0, 12, 1, -24)
+partsFrame.Size = UDim2.fromOffset(150, 24 + #PART_IDS * 22)
+partsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+partsFrame.BackgroundTransparency = 0.25
+partsFrame.Parent = gui
+local partsCorner = Instance.new("UICorner")
+partsCorner.CornerRadius = UDim.new(0, 10)
+partsCorner.Parent = partsFrame
+local partsLayout = Instance.new("UIListLayout")
+partsLayout.Padding = UDim.new(0, 2)
+partsLayout.Parent = partsFrame
+local partsPadding = Instance.new("UIPadding")
+partsPadding.PaddingTop = UDim.new(0, 4)
+partsPadding.PaddingLeft = UDim.new(0, 10)
+partsPadding.Parent = partsFrame
+
+local function partsLine(text, color)
+	local line = Instance.new("TextLabel")
+	line.Size = UDim2.new(1, -10, 0, 20)
+	line.BackgroundTransparency = 1
+	line.Font = Enum.Font.GothamBold
+	line.TextScaled = true
+	line.TextXAlignment = Enum.TextXAlignment.Left
+	line.TextColor3 = color
+	line.Text = text
+	line.Parent = partsFrame
+	return line
+end
+partsLine("PARTS", Color3.fromRGB(255, 200, 0))
+for _, partId in ipairs(PART_IDS) do
+	local line = partsLine("", PART_COLORS[partId])
+	local function refresh()
+		line.Text = Config.PartNames[partId] .. ": " .. formatMoney(player:GetAttribute("Parts_" .. partId) or 0)
+	end
+	player:GetAttributeChangedSignal("Parts_" .. partId):Connect(refresh)
+	refresh()
+end
+
 -- Notifications envoyées par le serveur (ventes au marché, etc.)
 local StarterGui = game:GetService("StarterGui")
 ReplicatedStorage:WaitForChild("Notify").OnClientEvent:Connect(function(text)
@@ -106,7 +155,7 @@ if RunService:IsStudio() then
 		local panel = Instance.new("Frame")
 		panel.AnchorPoint = Vector2.new(1, 0.5)
 		panel.Position = UDim2.new(1, -12, 0.5, 0)
-		panel.Size = UDim2.fromOffset(150, 240)
+		panel.Size = UDim2.fromOffset(150, 280)
 		panel.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 		panel.BackgroundTransparency = 0.25
 		panel.Parent = gui
@@ -150,8 +199,9 @@ if RunService:IsStudio() then
 		addButton("+ $250K", "addcash", 250000)
 		addButton("+1 Rebirth", "addrebirth", 1)
 		addButton("Reset Rebirths", "rebirths", 0)
-		addButton("Belt: Legendary", "deliver", 4)
-		addButton("Belt: EXTREME", "deliver", 6)
+		addButton("+50 Parts", "parts", 50)
+		addButton("Truck: Legendary", "deliver", 4)
+		addButton("Truck: EXTREME", "deliver", 6)
 	end
 end
 
